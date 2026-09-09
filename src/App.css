@@ -10,7 +10,9 @@
   --moss-deep: #4F7A55;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 body {
   margin: 0;
@@ -89,7 +91,8 @@ body {
   margin-bottom: 6px;
 }
 
-.form-input, .form-textarea {
+.form-input,
+.form-textarea {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -141,4 +144,52 @@ body {
 
 .star.filled {
   color: #DE8B76;
+}
+
+.req-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  margin-bottom: 10px;
+}
+
+.req-table td {
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.req-table td:first-child {
+  color: var(--ink-soft);
+  width: 40%;
+}
+
+.mark.yes {
+  color: var(--moss-deep);
+  font-weight: 700;
+}
+
+.mark.mid {
+  color: #E0A458;
+  font-weight: 700;
+}
+
+.mark.no {
+  color: #DE8B76;
+  font-weight: 700;
+}
+
+.rematch-btn {
+  width: 100%;
+  background: var(--moss);
+  color: #fff;
+  border: none;
+  padding: 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.rematch-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
 }

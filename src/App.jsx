@@ -16,6 +16,8 @@ function App() {
   const [honne, setHonne] = useState(null);
   const [memos, setMemos] = useState([]);
   const [newMemo, setNewMemo] = useState("");
+  const [requirementMatches, setRequirementMatches] = useState([]);
+  const [isRematching, setIsRematching] = useState(false);
 
   // --- 【関数の準備】 ---
   const fetchCompanies = () => {
@@ -80,6 +82,41 @@ function App() {
   const deleteImpression = async (id) => {
     await fetch(`http://127.0.0.1:8787/impressions/${id}`, { method: "DELETE" });
     fetchImpressions(selectedCompany.id);
+  };
+
+  // 照合結果を取得する
+  const fetchRequirementMatches = async (companyId) => {
+    const res = await fetch(`http://localhost:8787/requirement-matches?company_id=${companyId}`);
+    const data = await res.json();
+    setRequirementMatches(data);
+  };
+
+  // 「AIに再照合してもらう」を実行する関数
+  const rematch = async () => {
+    setIsRematching(true); // ボタンを押せない状態にする
+
+    try {
+      const body = JSON.stringify({ company_id: selectedCompany.id });
+      const bodyBytes = new TextEncoder().encode(body); // 日本語データはないが、既存コードと書き方を統一
+
+      const res = await fetch("http://localhost:8787/requirement-matches/rematch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: bodyBytes,
+      });
+
+      if (!res.ok) {
+        // 「求人票が空」「希望条件が0件」などのエラーをそのまま表示
+        const err = await res.json();
+        alert(err.error || "照合に失敗しました");
+        return;
+      }
+
+      // Gemini照合が終わったら、DBに保存された最新の結果を取り直す
+      await fetchRequirementMatches(selectedCompany.id);
+    } finally {
+      setIsRematching(false); // 成功しても失敗しても、必ずボタンを元に戻す
+    }
   };
 
   // 本音の取得・保存
@@ -177,6 +214,7 @@ function App() {
               fetchImpressions(company.id);
               fetchHonne(company.id);
               fetchMemos(company.id);
+              fetchRequirementMatches(company.id);
             }}
           >
             <div className="row-main">
@@ -217,6 +255,25 @@ function App() {
                 {s}
               </button>
             ))}
+          </div>
+
+          <div className="requirement-block">
+            <p className="field-label">希望条件との照合</p>
+            <table className="req-table">
+              <tbody>
+                {requirementMatches.map((m) => (
+                  <tr key={m.condition_id}>
+                    <td>{m.label}</td>
+                    <td className={`mark ${m.mark}`}>
+                      {m.mark === "yes" ? "○" : m.mark === "mid" ? "△" : "×"} {m.note}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <button className="rematch-btn" onClick={rematch} disabled={isRematching}>
+              {isRematching ? "照合中..." : "AIに再照合してもらう"}
+            </button>
           </div>
 
           <div className="impression-block">
