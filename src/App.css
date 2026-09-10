@@ -108,6 +108,13 @@ body {
   resize: vertical;
 }
 
+.form-hint {
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin: 6px 0 0;
+  line-height: 1.4;
+}
+
 .plant-submit-btn {
   width: 100%;
   background: var(--moss);
@@ -192,4 +199,156 @@ body {
 .rematch-btn:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  /* 薄い白の輪っか（土台） */
+  border-top-color: #fff;
+  /* 上だけ濃い白にして、回転がわかるようにする */
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.stage-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+  margin-right: 10px;
+}
+
+.view-nav {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.nav-btn {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--ink-soft);
+}
+
+.nav-btn.active {
+  background: var(--moss);
+  color: #fff;
+  border-color: var(--moss);
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.stat-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  text-align: center;
+}
+
+.stat-num {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+
+.dist-block {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.dist-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.dist-label {
+  width: 40px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.dist-track {
+  flex: 1;
+  height: 8px;
+  background: var(--bg);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.dist-fill {
+  height: 100%;
+  background: var(--moss);
+}
+
+.dist-num {
+  width: 20px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.section-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  margin: 16px 0 8px;
+}
+
+.log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.log-row {
+  display: flex;
+  gap: 10px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+}
+
+.log-d {
+  color: var(--ink-soft);
+  flex-shrink: 0;
+  width: 36px;
+}
+
+.log-company {
+  font-weight: 700;
 }

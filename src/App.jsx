@@ -1,6 +1,13 @@
 import { useState, useEffect } from "react";
 import './App.css';
 
+const STAGE_DISPLAY = {
+  seed: "🌱",
+  sprout: "🌿",
+  bud: "🌸",
+  flower: "🌼",
+};
+
 // --- 【データの準備】 ---
 function App() {
   const [companies, setCompanies] = useState([]);
@@ -18,12 +25,20 @@ function App() {
   const [newMemo, setNewMemo] = useState("");
   const [requirementMatches, setRequirementMatches] = useState([]);
   const [isRematching, setIsRematching] = useState(false);
+  const [view, setView] = useState("home"); // "home"(庭のみんな) か "records"(記録) を切り替える
+  const [records, setRecords] = useState([]); // 記録ログの一覧（全企業分）
 
   // --- 【関数の準備】 ---
   const fetchCompanies = () => {
     fetch("http://localhost:8787/companies")
       .then((res) => res.json())
       .then((data) => setCompanies(data));
+  };
+
+  const fetchRecords = () => {
+    fetch("http://localhost:8787/records")
+      .then((res) => res.json())
+      .then((data) => setRecords(data));
   };
 
   // ★
@@ -76,6 +91,7 @@ function App() {
 
     setNewImpression("");
     fetchImpressions(selectedCompany.id);
+    fetchCompanies();
   };
 
   // (いいな・気になるから1件削除)
@@ -114,6 +130,7 @@ function App() {
 
       // Gemini照合が終わったら、DBに保存された最新の結果を取り直す
       await fetchRequirementMatches(selectedCompany.id);
+      fetchCompanies();
     } finally {
       setIsRematching(false); // 成功しても失敗しても、必ずボタンを元に戻す
     }
@@ -138,6 +155,8 @@ function App() {
       headers: { "Content-Type": "application/json; charset=utf-8" },
       body: bodyBytes,
     });
+
+    fetchCompanies();
   };
 
   // 確認したいこと・選考メモの取得・追加・削除
@@ -164,6 +183,7 @@ function App() {
 
     setNewMemo("");
     fetchMemos(selectedCompany.id);
+    fetchCompanies();
   };
 
   const deleteMemo = async (id) => {
@@ -175,6 +195,12 @@ function App() {
   useEffect(() => {
     fetchCompanies();
   }, []);
+
+  useEffect(() => {
+    if (view === "records") {
+      fetchRecords();
+    }
+  }, [view]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -201,168 +227,266 @@ function App() {
     fetchCompanies();
   };
 
+  const growingCount = companies.length;
+  const interviewingCount = companies.filter((c) =>
+    ["一次面接", "二次面接", "最終選考"].includes(c.status)
+  ).length;
+  const offerCount = companies.filter((c) => c.status === "内定").length;
+
+  const stageCount = { seed: 0, sprout: 0, bud: 0, flower: 0 };
+  companies.forEach((c) => {
+    stageCount[c.growth_stage] = (stageCount[c.growth_stage] || 0) + 1;
+  });
+  const stageTotal = companies.length || 1;
+
   return (
     <div className="page">
-      <h1 className="page-title">庭のみんな</h1>
-      <ul className="company-list">
-        {companies.map((company) => (
-          <li
-            key={company.id}
-            className="company-row"
-            onClick={() => {
-              setSelectedCompany(company);
-              fetchImpressions(company.id);
-              fetchHonne(company.id);
-              fetchMemos(company.id);
-              fetchRequirementMatches(company.id);
-            }}
-          >
-            <div className="row-main">
-              <div className="row-name">{company.company_name}</div>
-              <div className="row-status">{company.status}</div>
-            </div>
-            <div className="row-stars">
-              {"★".repeat(company.interest_level)}
-              {"☆".repeat(5 - company.interest_level)}
-            </div>
-          </li>
-        ))}
-      </ul>
-      {selectedCompany && (
-        <div className="detail-panel">
-          <h2>{selectedCompany.company_name}</h2>
-          <p className="row-status">{selectedCompany.status}</p>
+      <div className="view-nav">
+        <button
+          className={view === "home" ? "nav-btn active" : "nav-btn"}
+          onClick={() => setView("home")}
+        >
+          庭のみんな
+        </button>
+        <button
+          className={view === "records" ? "nav-btn active" : "nav-btn"}
+          onClick={() => setView("records")}
+        >
+          記録
+        </button>
+      </div>
 
-          <div className="star-picker">
-            {[1, 2, 3, 4, 5].map((n) => (
-              <span
-                key={n}
-                className={n <= selectedCompany.interest_level ? "star filled" : "star"}
-                onClick={() => updateInterestLevel(selectedCompany.id, n)}
+      {view === "home" ? (
+        <>
+          <h1 className="page-title">庭のみんな</h1>
+          <ul className="company-list">
+            {companies.map((company) => (
+              <li
+                key={company.id}
+                className="company-row"
+                onClick={() => {
+                  setSelectedCompany(company);
+                  fetchImpressions(company.id);
+                  fetchHonne(company.id);
+                  fetchMemos(company.id);
+                  fetchRequirementMatches(company.id);
+                }}
               >
-                ★
-              </span>
+                <span className="stage-icon">{STAGE_DISPLAY[company.growth_stage]}</span>
+                <div className="row-main">
+                  <div className="row-name">{company.company_name}</div>
+                  <div className="row-status">{company.status}</div>
+                </div>
+                <div className="row-stars">
+                  {"★".repeat(company.interest_level)}
+                  {"☆".repeat(5 - company.interest_level)}
+                </div>
+              </li>
             ))}
-          </div>
+          </ul>
+          {selectedCompany && (
+            <div className="detail-panel">
+              <h2>{selectedCompany.company_name}</h2>
+              <p className="row-status">{selectedCompany.status}</p>
 
-          <div className="status-picker">
-            {statusOptions.map((s) => (
-              <button
-                key={s}
-                className={s === selectedCompany.status ? "status-btn active" : "status-btn"}
-                onClick={() => updateStatus(selectedCompany.id, s)}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-
-          <div className="requirement-block">
-            <p className="field-label">希望条件との照合</p>
-            <table className="req-table">
-              <tbody>
-                {requirementMatches.map((m) => (
-                  <tr key={m.condition_id}>
-                    <td>{m.label}</td>
-                    <td className={`mark ${m.mark}`}>
-                      {m.mark === "yes" ? "○" : m.mark === "mid" ? "△" : "×"} {m.note}
-                    </td>
-                  </tr>
+              <div className="star-picker">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <span
+                    key={n}
+                    className={n <= selectedCompany.interest_level ? "star filled" : "star"}
+                    onClick={() => updateInterestLevel(selectedCompany.id, n)}
+                  >
+                    ★
+                  </span>
                 ))}
-              </tbody>
-            </table>
-            <button className="rematch-btn" onClick={rematch} disabled={isRematching}>
-              {isRematching ? "照合中..." : "AIに再照合してもらう"}
-            </button>
-          </div>
+              </div>
 
-          <div className="impression-block">
-            <p className="field-label">いいな・気になる</p>
-            <ul className="impression-list">
-              {impressions.map((imp) => (
-                <li key={imp.id} className={imp.type === "good" ? "imp-good" : "imp-concern"}>
-                  {imp.content}
-                  <span onClick={() => deleteImpression(imp.id)} className="imp-delete">×</span>
-                </li>
-              ))}
-            </ul>
+              <div className="status-picker">
+                {statusOptions.map((s) => (
+                  <button
+                    key={s}
+                    className={s === selectedCompany.status ? "status-btn active" : "status-btn"}
+                    onClick={() => updateStatus(selectedCompany.id, s)}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
 
-            <input
-              className="form-input"
-              value={newImpression}
-              onChange={(e) => setNewImpression(e.target.value)}
-              placeholder="気づいたことを書く"
-            />
-            <div className="imp-buttons">
-              <button onClick={() => addImpression("good")}>いいな に追加</button>
-              <button onClick={() => addImpression("concern")}>気になる に追加</button>
+              <div className="requirement-block">
+                <p className="field-label">希望条件との照合</p>
+                <table className="req-table">
+                  <tbody>
+                    {requirementMatches.map((m) => (
+                      <tr key={m.condition_id}>
+                        <td>{m.label}</td>
+                        <td className={`mark ${m.mark}`}>
+                          {m.mark === "yes" ? "○" : m.mark === "mid" ? "△" : "×"} {m.note}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <button className="rematch-btn" onClick={rematch} disabled={isRematching}>
+                  {isRematching ? (
+                    <>
+                      <span className="spinner"></span>
+                      照合中...
+                    </>
+                  ) : requirementMatches.length === 0 ? (
+                    "AIに求人内容と希望条件を照らし合わせてもらう"
+                  ) : (
+                    "AIにもう一度照らし合わせてもらう"
+                  )}
+                </button>
+              </div>
+
+              <div className="impression-block">
+                <p className="field-label">いいな・気になる</p>
+                <ul className="impression-list">
+                  {impressions.map((imp) => (
+                    <li key={imp.id} className={imp.type === "good" ? "imp-good" : "imp-concern"}>
+                      {imp.content}
+                      <span onClick={() => deleteImpression(imp.id)} className="imp-delete">×</span>
+                    </li>
+                  ))}
+                </ul>
+
+                <input
+                  className="form-input"
+                  value={newImpression}
+                  onChange={(e) => setNewImpression(e.target.value)}
+                  placeholder="気づいたことを書く"
+                />
+                <div className="imp-buttons">
+                  <button onClick={() => addImpression("good")}>いいな に追加</button>
+                  <button onClick={() => addImpression("concern")}>気になる に追加</button>
+                </div>
+              </div>
+
+              <div className="honne-block">
+                <p className="field-label">本音</p>
+                <textarea
+                  className="form-textarea"
+                  value={honne || ""}
+                  onChange={(e) => setHonne(e.target.value)}
+                  onBlur={saveHonne}
+                  placeholder="ここだけの本音"
+                />
+              </div>
+
+              <div className="memo-block">
+                <p className="field-label">確認したいこと・選考メモ</p>
+                <ul className="memo-list">
+                  {memos.map((memo) => (
+                    <li key={memo.id} className="memo-item">
+                      {memo.content}
+                      <span onClick={() => deleteMemo(memo.id)} className="imp-delete">×</span>
+                    </li>
+                  ))}
+                </ul>
+
+                <input
+                  className="form-input"
+                  value={newMemo}
+                  onChange={(e) => setNewMemo(e.target.value)}
+                  placeholder="確認したいこと・選考メモを書く"
+                />
+                <button onClick={addMemo}>追加</button>
+              </div>
+
+              <button onClick={() => setSelectedCompany(null)}>閉じる</button>
+            </div>
+          )}
+
+          <h2 className="section-title">＋植える</h2>
+          <form onSubmit={handleSubmit} className="plant-form">
+            <div className="form-block">
+              <label>会社名</label>
+              <input
+                className="form-input"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                required
+              />
+            </div>
+            <div className="form-block">
+              <label>求人ページ</label>
+              <input
+                className="form-input"
+                value={jobUrl}
+                onChange={(e) => setJobUrl(e.target.value)}
+              />
+            </div>
+            <div className="form-block">
+              <label>求人情報</label>
+              <textarea
+                className="form-textarea"
+                value={jobText}
+                onChange={(e) => setJobText(e.target.value)}
+              />
+              <p className="form-hint">
+                Ctrl+Aで全選択すると他社の情報も混ざることがあります。求人本文だけを範囲選択してコピペしてください。
+              </p>
+            </div>
+            <button type="submit" className="plant-submit-btn">植える</button>
+          </form>
+        </>
+      ) : (
+        <div className="records-screen">
+          <h1 className="page-title">庭の様子</h1>
+
+          <div className="stat-grid">
+            <div className="stat-card">
+              <div className="stat-num">{growingCount}</div>
+              <div className="stat-label">育てている苗</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-num">{interviewingCount}</div>
+              <div className="stat-label">面接・最終選考</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-num">{offerCount}</div>
+              <div className="stat-label">内定の花</div>
             </div>
           </div>
 
-          <div className="honne-block">
-            <p className="field-label">本音</p>
-            <textarea
-              className="form-textarea"
-              value={honne || ""}
-              onChange={(e) => setHonne(e.target.value)}
-              onBlur={saveHonne}
-              placeholder="ここだけの本音"
-            />
+          <div className="dist-block">
+            <p className="field-label">成長段階の分布</p>
+            {[
+              { key: "seed", label: "たね" },
+              { key: "sprout", label: "双葉" },
+              { key: "bud", label: "つぼみ" },
+              { key: "flower", label: "花" },
+            ].map((s) => (
+              <div className="dist-row" key={s.key}>
+                <span className="dist-label">{s.label}</span>
+                <div className="dist-track">
+                  <div
+                    className="dist-fill"
+                    style={{ width: `${(stageCount[s.key] / stageTotal) * 100}%` }}
+                  ></div>
+                </div>
+                <span className="dist-num">{stageCount[s.key]}</span>
+              </div>
+            ))}
           </div>
 
-          <div className="memo-block">
-            <p className="field-label">確認したいこと・選考メモ</p>
-            <ul className="memo-list">
-              {memos.map((memo) => (
-                <li key={memo.id} className="memo-item">
-                  {memo.content}
-                  <span onClick={() => deleteMemo(memo.id)} className="imp-delete">×</span>
-                </li>
-              ))}
-            </ul>
-
-            <input
-              className="form-input"
-              value={newMemo}
-              onChange={(e) => setNewMemo(e.target.value)}
-              placeholder="確認したいこと・選考メモを書く"
-            />
-            <button onClick={addMemo}>追加</button>
+          <div className="section-label">最近の記録</div>
+          <div className="log-list">
+            {records.map((r) => (
+              <div className="log-row" key={r.id}>
+                <div className="log-d">
+                  {new Date(r.created_at).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" })}
+                </div>
+                <div className="log-body">
+                  <span className="log-company">{r.company_name}</span> — <span className="log-note">{r.note}</span>
+                </div>
+              </div>
+            ))}
           </div>
-
-          <button onClick={() => setSelectedCompany(null)}>閉じる</button>
         </div>
       )}
-
-      <h2 className="section-title">＋植える</h2>
-      <form onSubmit={handleSubmit} className="plant-form">
-        <div className="form-block">
-          <label>会社名</label>
-          <input
-            className="form-input"
-            value={companyName}
-            onChange={(e) => setCompanyName(e.target.value)}
-            required
-          />
-        </div>
-        <div className="form-block">
-          <label>求人ページ</label>
-          <input
-            className="form-input"
-            value={jobUrl}
-            onChange={(e) => setJobUrl(e.target.value)}
-          />
-        </div>
-        <div className="form-block">
-          <label>求人情報</label>
-          <textarea
-            className="form-textarea"
-            value={jobText}
-            onChange={(e) => setJobText(e.target.value)}
-          />
-        </div>
-        <button type="submit" className="plant-submit-btn">植える</button>
-      </form>
     </div>
   );
 }
