@@ -24,7 +24,8 @@ body {
 .page {
   max-width: 420px;
   margin: 0 auto;
-  padding: 24px 20px 60px;
+  padding: 24px 20px 90px;
+  text-align: left;
 }
 
 .page-title {
@@ -231,12 +232,6 @@ body {
   margin-right: 10px;
 }
 
-.view-nav {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
 .nav-btn {
   background: var(--paper);
   border: 1px solid var(--line);
@@ -351,4 +346,264 @@ body {
 
 .log-company {
   font-weight: 700;
+}
+
+.timeline-block {
+  margin-top: 4px;
+  margin-bottom: 14px;
+}
+
+.timeline-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.timeline-row {
+  display: flex;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.timeline-date {
+  flex-shrink: 0;
+  width: 32px;
+}
+
+.timeline-note {
+  color: var(--ink);
+}
+
+.timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+
+.timeline-toggle {
+  font-size: 11px;
+  color: var(--ink-soft);
+  font-weight: 400;
+}
+
+.timeline {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+}
+
+.timeline li {
+  padding: 10px 0 10px 20px;
+  border-left: 2px solid var(--line);
+  position: relative;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  margin-left: 6px;
+}
+
+.timeline li::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 14px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--moss);
+  border: 2px solid var(--paper);
+}
+
+.timeline li.status::before {
+  background: #DE8B76;
+  width: 11px;
+  height: 11px;
+  left: -8.6px;
+}
+
+.timeline li.status .t-title {
+  color: #DE8B76;
+}
+
+.timeline li .t-title {
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.page-title,
+.section-title,
+.detail-panel h2 {
+  color: var(--ink);
+}
+
+/* 画面共通のヘッダー */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.eyebrow {
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin: 0 0 2px;
+}
+
+.home-summary {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  margin: 6px 0 0;
+}
+
+.add-btn {
+  background: var(--moss);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* 詳細・登録画面共通の「戻る」ヘッダー */
+.screen-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.back-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 15px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.screen-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* ホームの簡易庭ビュー（後でisometricイラストに差し替え予定の仮素材） */
+.mini-garden {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 18px;
+  font-size: 26px;
+}
+
+.mini-garden-icon {
+  cursor: pointer;
+}
+
+.plant-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 18px;
+  cursor: pointer;
+}
+
+.toggle-note {
+  font-size: 11px;
+  color: var(--ink-soft);
+  text-align: center;
+  margin-top: 24px;
+}
+
+.settings-placeholder {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.log-row {
+  cursor: pointer;
+}
+
+/* 下部ナビゲーション */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 420px;
+  /* .pageのmax-widthと合わせています */
+  display: flex;
+  gap: 8px;
+  padding: 10px 20px calc(10px + env(safe-area-inset-bottom));
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+  box-sizing: border-box;
+}
+
+.bottom-nav .nav-btn {
+  flex: 1;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 4px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--ink-soft);
+}
+
+.bottom-nav .nav-btn.active {
+  background: var(--moss);
+  color: #fff;
+  border-color: var(--moss);
+}
+
+.required-label {
+  color: #DE8B76;
+  font-weight: 400;
+  font-size: 11px;
+}
+
+.form-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.form-chip {
+  border: 1px solid var(--line);
+  background: var(--paper);
+  border-radius: 20px;
+  padding: 7px 14px;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.form-chip.selected {
+  background: var(--moss);
+  border-color: var(--moss);
+  color: #fff;
 }
