@@ -30,6 +30,10 @@
   }
 }
 
+html {
+  overflow-y: scroll;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --text: #9ca3af;
