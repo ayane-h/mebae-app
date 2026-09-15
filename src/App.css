@@ -12,10 +12,71 @@
   --coral: #E8846F;
   --plum: #8574A3;
   --plum-bg: #F1EDF6;
+  --plum-text: #4A3E5B;
+  --plum-border: #C9BBDA;
+  --shadow: rgba(38, 59, 51, 0.15);
+  --mini-plant-bg: #EFF4EF;
+  --card-sprout-bg: #E9F1E7;
+  --card-talk-bg: #FBF1DF;
+  --card-flower-bg: #F6E9EA;
+  --card-rest-bg: #EBEAE3;
+  --nudge-bg: #F1EDE0;
+  --nudge-border: #E4DCC4;
+  --suggest-bg: #FBF1DF;
+  --suggest-border: #E9D3A5;
+  --suggest-text: #8A6A2E;
+  --terracotta: #DE8B76;
+  --btn-bg: #7FA37A;
+  --btn-bg-hover: #4F7A55;
+  --pill-active-bg: #263B33;
+  --card-icon-bg: rgba(255, 255, 255, 0.9);
+}
+
+/* ---------- ダークモード ----------
+   <body>タグに dark クラスが付くと、ここで色の変数だけを全部上書きする。
+   クラスをつけ外しするだけで、他のCSSは一切変更せずに配色が切り替わる仕組み */
+body.dark {
+  --bg: #21261F;
+  --paper: #2B322A;
+  --ink: #EAF0E6;
+  --ink-soft: #A6B2A0;
+  --line: #3C443A;
+  --moss: #8FC28C;
+  --moss-deep: #6FA872;
+  --marigold: #E8B673;
+  --coral: #F09880;
+  --plum: #B7A6D6;
+  --plum-bg: #332C40;
+  --plum-text: #E4DCF0;
+  --plum-border: #5C4F72;
+  --shadow: rgba(0, 0, 0, 0.4);
+  --mini-plant-bg: #333B31;
+  --card-sprout-bg: #2E4A32;
+  --card-talk-bg: #4A3A1E;
+  --card-flower-bg: #4A2E36;
+  --card-rest-bg: #3A3D37;
+  --nudge-bg: #3A3527;
+  --nudge-border: #504A34;
+  --suggest-bg: #3A3427;
+  --suggest-border: #5C5136;
+  --suggest-text: #E3C186;
+  --terracotta: #E89C86;
+  --btn-bg: #4F7A55;
+  --btn-bg-hover: #3E6142;
+  --pill-active-bg: #6FA872;
+  --card-icon-bg: rgba(255, 255, 255, 0.92);
 }
 
 * {
   box-sizing: border-box;
+}
+
+#root {
+  border-inline: none;
+  display: block;
+  width: auto;
+  max-width: none;
+  text-align: left;
 }
 
 html {
@@ -42,12 +103,14 @@ body {
   font-family: 'Shippori Mincho', serif;
   font-size: 22px;
   margin: 0 0 4px;
+  color: var(--ink);
 }
 
 .section-title {
   font-family: 'Shippori Mincho', serif;
   font-size: 18px;
   margin-top: 32px;
+  color: var(--ink);
 }
 
 /* ---------- 企業一覧 ---------- */
@@ -55,10 +118,106 @@ body {
   list-style: none;
   padding: 0;
   margin: 0;
+  width: 100%;
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 18px;
   overflow: hidden;
+}
+
+.sleeping-toggle {
+  text-align: center;
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-top: 14px;
+  cursor: pointer;
+}
+
+.sleeping-list {
+  margin-top: 10px;
+  opacity: 0.8;
+}
+
+/* ---------- 企業一覧：絞り込み・並び替え ---------- */
+.control-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.status-pills {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.status-pill {
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+  background: var(--paper);
+  cursor: pointer;
+}
+
+.status-pill.active {
+  background: var(--pill-active-bg);
+  color: #fff;
+  border-color: var(--pill-active-bg);
+}
+
+.sort-wrap {
+  position: relative;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.sort-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.sort-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.sort-menu {
+  position: absolute;
+  right: 0;
+  top: 40px;
+  z-index: 5;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 8px 20px var(--shadow);
+  min-width: 160px;
+  overflow: hidden;
+}
+
+.sort-option {
+  padding: 10px 14px;
+  font-size: 12.5px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.sort-option:hover {
+  background: var(--bg);
+}
+
+.sort-option.selected {
+  color: var(--moss-deep);
+  font-weight: 700;
 }
 
 .company-row {
@@ -67,6 +226,12 @@ body {
   gap: 12px;
   padding: 12px 14px;
   border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.company-row:hover {
+  background: var(--bg);
 }
 
 .company-row:last-child {
@@ -77,7 +242,7 @@ body {
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  background: #EFF4EF;
+  background: var(--mini-plant-bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -103,7 +268,7 @@ body {
 }
 
 .row-stars {
-  color: #DE8B76;
+  color: var(--terracotta);
   font-size: 13px;
   flex-shrink: 0;
 }
@@ -132,6 +297,7 @@ body {
 .form-textarea {
   width: 100%;
   border: 1px solid var(--line);
+  outline: none;
   border-radius: 12px;
   padding: 11px 13px;
   font-size: 13px;
@@ -154,7 +320,7 @@ body {
 
 .plant-submit-btn {
   width: 100%;
-  background: var(--moss);
+  background: var(--btn-bg);
   color: #fff;
   border: none;
   padding: 14px;
@@ -165,7 +331,7 @@ body {
 }
 
 .plant-submit-btn:hover {
-  background: var(--moss-deep);
+  background: var(--btn-bg-hover);
 }
 
 .required-label {
@@ -192,8 +358,8 @@ body {
 }
 
 .form-chip.selected {
-  background: var(--moss);
-  border-color: var(--moss);
+  background: var(--btn-bg);
+  border-color: var(--btn-bg);
   color: #fff;
 }
 
@@ -209,7 +375,7 @@ body {
 }
 
 .star.filled {
-  color: #DE8B76;
+  color: var(--terracotta);
 }
 
 .status-picker {
@@ -229,8 +395,8 @@ body {
 }
 
 .status-btn.active {
-  background: var(--moss);
-  border-color: var(--moss);
+  background: var(--btn-bg);
+  border-color: var(--btn-bg);
   color: #fff;
   font-weight: 700;
 }
@@ -264,7 +430,7 @@ body {
 }
 
 .mark.no {
-  color: #DE8B76;
+  color: var(--terracotta);
   font-weight: 700;
 }
 
@@ -285,7 +451,7 @@ body {
   display: block;
   width: fit-content;
   margin: 0 auto;
-  background: var(--moss);
+  background: var(--btn-bg);
   color: #fff;
   border: none;
   padding: 10px 18px;
@@ -297,6 +463,13 @@ body {
 .rematch-btn:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+.rematch-hint {
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--ink-soft);
+  margin: 8px 0 0;
 }
 
 .spinner {
@@ -373,26 +546,26 @@ body {
 }
 
 .stat-card.c-sprout {
-  background: #E9F1E7;
+  background: var(--card-sprout-bg);
 }
 
 .stat-card.c-talk {
-  background: #FBF1DF;
+  background: var(--card-talk-bg);
 }
 
 .stat-card.c-flower {
-  background: #F6E9EA;
+  background: var(--card-flower-bg);
 }
 
 .stat-card.c-rest {
-  background: #EBEAE3;
+  background: var(--card-rest-bg);
 }
 
 .stat-icon {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: var(--paper);
+  background: var(--card-icon-bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -430,8 +603,8 @@ body {
   align-items: center;
   gap: 10px;
   margin: 16px 0 4px;
-  background: #F1EDE0;
-  border: 1px solid #E4DCC4;
+  background: var(--nudge-bg);
+  border: 1px solid var(--nudge-border);
   border-radius: 14px;
   padding: 12px 14px;
   font-size: 12.5px;
@@ -456,6 +629,26 @@ body {
   color: var(--ink-soft);
   margin: 0 0 6px;
   font-weight: 700;
+}
+
+.selection-flow-box {
+  background: var(--bg);
+  border-radius: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+
+.selection-flow-text {
+  font-size: 12.5px;
+  color: var(--ink);
+  margin: 0;
+  line-height: 1.6;
+}
+
+.selection-flow-source {
+  font-size: 10px;
+  color: var(--ink-soft);
+  margin: 4px 0 0;
 }
 
 .dist-row {
@@ -585,14 +778,14 @@ body {
 }
 
 .timeline li.status::before {
-  background: #DE8B76;
+  background: var(--terracotta);
   width: 11px;
   height: 11px;
   left: -8.6px;
 }
 
 .timeline li.status .t-title {
-  color: #DE8B76;
+  color: var(--terracotta);
 }
 
 .timeline li .t-title {
@@ -622,7 +815,7 @@ body {
 }
 
 .add-btn {
-  background: var(--moss);
+  background: var(--btn-bg);
   color: #fff;
   border: none;
   border-radius: 12px;
@@ -684,9 +877,20 @@ body {
   overflow-wrap: break-word;
 }
 
+.detail-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 .detail-meta {
   font-size: 11.5px;
   color: var(--ink-soft);
+  margin: 0;
+}
+
+.header-star-picker {
+  font-size: 15px;
 }
 
 .job-url-link {
@@ -848,6 +1052,30 @@ body {
   font-weight: 700;
 }
 
+.ai-suggest-box {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.ai-suggest-label {
+  font-size: 10.5px;
+  color: var(--marigold);
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.chip.suggest {
+  background: var(--suggest-bg);
+  border: 1px solid var(--suggest-border);
+  color: var(--suggest-text);
+}
+
+.chip-plus {
+  color: var(--marigold);
+  font-weight: 700;
+}
+
 .chip-edit-input {
   background: var(--bg);
   border: none;
@@ -888,26 +1116,26 @@ body {
 
 .honne-box {
   background: var(--plum-bg);
-  border: 1px dashed #C9BBDA;
+  border: 1px dashed var(--plum-border);
   border-radius: 16px;
   padding: 16px;
   font-size: 13.5px;
   line-height: 1.7;
-  color: #4A3E5B;
+  color: var(--plum-text);
   cursor: pointer;
   white-space: pre-wrap;
 }
 
 .honne-edit {
   width: 100%;
-  border: 1px dashed #C9BBDA;
+  border: 1px dashed var(--plum-border);
   outline: none;
   border-radius: 16px;
   padding: 16px;
   font-size: 13.5px;
   font-family: inherit;
   line-height: 1.7;
-  color: #4A3E5B;
+  color: var(--plum-text);
   background: var(--plum-bg);
   min-height: 90px;
   resize: vertical;
@@ -970,6 +1198,69 @@ body {
 .settings-placeholder {
   font-size: 13px;
   color: var(--ink-soft);
+  margin-top: 20px;
+}
+
+.settings-header-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.title-right {
+  text-align: right;
+}
+
+.header-fill {
+  flex: 1;
+  width: 100%;
+}
+
+.theme-toggle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.theme-toggle svg {
+  width: 16px;
+  height: 16px;
+  stroke: var(--ink-soft);
+  fill: none;
+}
+
+.settings-list {
+  margin: 6px 0 0;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13.5px;
+  cursor: pointer;
+}
+
+.settings-row:last-child {
+  border-bottom: none;
+}
+
+.settings-row .arrow {
+  color: var(--ink-soft);
+  font-size: 12px;
 }
 
 /* ---------- 下部ナビゲーション ---------- */

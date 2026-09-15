@@ -32,13 +32,20 @@ function App() {
   const [editingMemoId, setEditingMemoId] = useState(null); // タップして編集中のメモのid
   const [editingMemoValue, setEditingMemoValue] = useState(""); // 編集中の文字
   const [requirementMatches, setRequirementMatches] = useState([]);
+  const [aiSuggestions, setAiSuggestions] = useState([]); // AIからの選考メモ提案（未採用のもの）
   const [isRematching, setIsRematching] = useState(false);
   const [records, setRecords] = useState([]); // 記録ログの一覧（全企業分）
   const [companyRecords, setCompanyRecords] = useState([]); // 選択中の企業のタイムライン
   const [showAllRecords, setShowAllRecords] = useState(false); // タイムラインを全件表示するかどうか
   const [showJobTextEditor, setShowJobTextEditor] = useState(false); // 求人票本文の編集欄を開いているか
   const [jobTextDraft, setJobTextDraft] = useState(""); // 求人票本文の編集中の下書き
+  const [editingSelectionFlow, setEditingSelectionFlow] = useState(false); // 選考フローを編集中かどうか
+  const [selectionFlowDraft, setSelectionFlowDraft] = useState(""); // 選考フローの編集中の下書き
   const [showAllLog, setShowAllLog] = useState(false); // 「最近の記録」を全件表示するかどうか
+  const [showSleeping, setShowSleeping] = useState(false); // 眠らせた企業を開いて見せるかどうか
+  const [filterType, setFilterType] = useState("all"); // "all" | "progress" | "fav"
+  const [sortType, setSortType] = useState("growth"); // "interest" | "growth" | "new"
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
 
   // ＋植える画面の「この会社、今どんな感じ？」（1つだけ選べる）
   const [moodChip, setMoodChip] = useState(null);
@@ -60,12 +67,21 @@ function App() {
   const [activeTab, setActiveTab] = useState("home"); // "home" | "companies" | "records" | "settings"
   // タブの上に重ねて表示する「画面」（null = 何も重ねていない）
   const [screen, setScreen] = useState(null); // null | "detail" | "plant-new"
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem("mebae-dark-mode") === "1");
 
   // --- 【関数の準備】 ---
   const fetchCompanies = () => {
     fetch("http://localhost:8787/companies")
       .then((res) => res.json())
-      .then((data) => setCompanies(data));
+      .then((data) => {
+        setCompanies(data);
+        // 詳細画面で表示中の企業（selectedCompany）も、同じタイミングで最新化する
+        setSelectedCompany((prev) => {
+          if (!prev) return prev;
+          const updated = data.find((c) => c.id === prev.id);
+          return updated || prev;
+        });
+      });
   };
 
   const fetchRecords = () => {
@@ -87,10 +103,13 @@ function App() {
     fetchHonne(company.id);
     fetchMemos(company.id);
     fetchRequirementMatches(company.id);
+    fetchAiSuggestions(company.id);
     fetchCompanyRecords(company.id);
     setShowAllRecords(false);
     setShowJobTextEditor(false);
     setJobTextDraft(company.job_text || "");
+    setEditingSelectionFlow(false);
+    setSelectionFlowDraft(company.selection_flow || "");
     setAddingImpressionType(null);
     setEditingImpressionId(null);
     setEditingHonne(false);
@@ -155,6 +174,15 @@ function App() {
     });
     fetchCompanies();
     setSelectedCompany((prev) => prev && { ...prev, is_sleeping: newValue });
+  };
+
+  // ダークモードの切り替え（ブラウザに保存して、次回開いた時も覚えている）
+  const toggleDarkMode = () => {
+    setDarkMode((prev) => {
+      const next = !prev;
+      localStorage.setItem("mebae-dark-mode", next ? "1" : "0");
+      return next;
+    });
   };
 
   // いいな・気になる(その会社の一覧を取得)
@@ -235,6 +263,20 @@ function App() {
     setRequirementMatches(data);
   };
 
+  // AIからの選考メモ提案を取得する
+  const fetchAiSuggestions = async (companyId) => {
+    const res = await fetch(`http://localhost:8787/ai-suggestions?company_id=${companyId}`);
+    const data = await res.json();
+    setAiSuggestions(data);
+  };
+
+  // 提案チップをタップして採用する：選考メモに追加し、提案からは消す
+  const acceptSuggestion = async (suggestion) => {
+    await addMemo(suggestion.content);
+    await fetch(`http://localhost:8787/ai-suggestions/${suggestion.id}`, { method: "DELETE" });
+    setAiSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
+  };
+
   // 「AIに再照合してもらう」を実行する関数
   const rematch = async () => {
     setIsRematching(true);
@@ -256,6 +298,7 @@ function App() {
       }
 
       await fetchRequirementMatches(selectedCompany.id);
+      fetchAiSuggestions(selectedCompany.id);
       fetchCompanies();
       fetchCompanyRecords(selectedCompany.id);
       fetchRecords();
@@ -273,6 +316,27 @@ function App() {
     });
     setSelectedCompany((prev) => prev && { ...prev, job_text: jobTextDraft });
     await rematch();
+  };
+
+  // 選考フローを手動で編集して保存する（manually_editedが立つ）
+  const startEditSelectionFlow = () => {
+    setSelectionFlowDraft(selectedCompany.selection_flow || "");
+    setEditingSelectionFlow(true);
+  };
+
+  const saveSelectionFlow = async () => {
+    await fetch(`http://localhost:8787/companies/${selectedCompany.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ selection_flow: selectionFlowDraft }),
+    });
+    setSelectedCompany((prev) => prev && {
+      ...prev,
+      selection_flow: selectionFlowDraft,
+      selection_flow_manually_edited: 1,
+    });
+    fetchCompanies();
+    setEditingSelectionFlow(false);
   };
 
   // 希望条件の表をタップして、手動で○△×を切り替える（yes → mid → no → yes …の順）
@@ -401,6 +465,12 @@ function App() {
     }
   }, [activeTab]);
 
+  // ダークモードの状態が変わるたびに、<body>タグ自体にdarkクラスをつけ外しする
+  // （背景色・文字色の大元がbodyタグで決まっているため、.pageだけでは届かない）
+  useEffect(() => {
+    document.body.classList.toggle("dark", darkMode);
+  }, [darkMode]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -454,7 +524,7 @@ function App() {
   };
 
   // --- 集計（記録タブ・ホームタブで使う） ---
-  const growingCount = companies.length;
+  const growingCount = companies.filter((c) => !c.is_sleeping).length;
   const interviewingCount = companies.filter((c) =>
     ["一次面接", "二次面接", "最終選考"].includes(c.status)
   ).length;
@@ -503,6 +573,31 @@ function App() {
 
   const visibleLogGroups = showAllLog ? groupedRecords : groupedRecords.slice(0, 4);
 
+  // 企業一覧タブ用：絞り込み → 並び替え、の順に適用する
+  const STAGE_ORDER = { seed: 0, sprout: 1, bud: 2, flower: 3 };
+  const filteredCompanies = companies
+    .filter((c) => !c.is_sleeping)
+    .filter((c) => {
+      if (filterType === "progress") {
+        return ["一次面接", "二次面接", "最終選考"].includes(c.status);
+      }
+      if (filterType === "fav") {
+        return !!c.is_favorite;
+      }
+      return true; // "all"
+    });
+
+  const sortedCompanies = [...filteredCompanies].sort((a, b) => {
+    if (sortType === "interest") {
+      return b.interest_level - a.interest_level; // 志望度が高い順
+    }
+    if (sortType === "growth") {
+      return STAGE_ORDER[b.growth_stage] - STAGE_ORDER[a.growth_stage]; // 育ってきた順
+    }
+    // "new"：新しく保存した順
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
+
   // 「しばらく記録がありません」の案内用：各企業の最後の活動日を調べて、
   // 一番長く放置されている企業を1社だけ選ぶ（7日以上動きがなければ対象）
   let nudgeCompany = null;
@@ -533,9 +628,20 @@ function App() {
             <button className="back-btn" onClick={closeDetail}>←</button>
             <div className="detail-title-wrap">
               <p className="detail-company">{selectedCompany.company_name}</p>
-              <p className="detail-meta">
-                {selectedCompany.status} ・ 志望度 {"★".repeat(selectedCompany.interest_level)}
-              </p>
+              <div className="detail-meta-row">
+                <p className="detail-meta">{selectedCompany.status}</p>
+                <div className="star-picker header-star-picker">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <span
+                      key={n}
+                      className={n <= selectedCompany.interest_level ? "star filled" : "star"}
+                      onClick={() => updateInterestLevel(selectedCompany.id, n)}
+                    >
+                      ★
+                    </span>
+                  ))}
+                </div>
+              </div>
             </div>
             {selectedCompany.job_url && (
               <a className="job-url-link" href={selectedCompany.job_url} target="_blank" rel="noreferrer">
@@ -609,6 +715,11 @@ function App() {
                     "AIにもう一度照らし合わせてもらう"
                   )}
                 </button>
+                {isRematching && (
+                  <p className="rematch-hint">
+                    求人票を読んで、選考フローや質問の候補もまとめて考えています
+                  </p>
+                )}
 
                 <div className="job-text-block">
                   <p
@@ -645,20 +756,7 @@ function App() {
                   私が感じたこと
                 </p>
 
-                <p className="field-label">志望度</p>
-                <div className="star-picker">
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <span
-                      key={n}
-                      className={n <= selectedCompany.interest_level ? "star filled" : "star"}
-                      onClick={() => updateInterestLevel(selectedCompany.id, n)}
-                    >
-                      ★
-                    </span>
-                  ))}
-                </div>
-
-                <p className="field-label" style={{ marginTop: "14px" }}>いいなと思ったこと</p>
+                <p className="field-label">いいなと思ったこと</p>
                 <div className="chip-row">
                   {impressions.filter((imp) => imp.type === "good").map((imp) =>
                     editingImpressionId === imp.id ? (
@@ -778,7 +876,30 @@ function App() {
                   選考
                 </p>
 
-                <p className="field-label">選考ステータス</p>
+                <p className="field-label">選考フロー</p>
+                {editingSelectionFlow ? (
+                  <input
+                    className="form-input"
+                    autoFocus
+                    value={selectionFlowDraft}
+                    onChange={(e) => setSelectionFlowDraft(e.target.value)}
+                    onBlur={saveSelectionFlow}
+                    onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
+                  />
+                ) : (
+                  <div className="selection-flow-box" onClick={startEditSelectionFlow}>
+                    <p className="selection-flow-text">
+                      {selectedCompany.selection_flow || "記載なし"}
+                    </p>
+                    <p className="selection-flow-source">
+                      {selectedCompany.selection_flow_manually_edited
+                        ? "手動で編集済み"
+                        : "AIが求人票から抽出"}
+                    </p>
+                  </div>
+                )}
+
+                <p className="field-label" style={{ marginTop: "14px" }}>選考ステータス</p>
                 <div className="status-picker">
                   {statusOptions.map((s) => (
                     <button
@@ -832,6 +953,20 @@ function App() {
                     <div className="chip add-chip" onClick={startAddMemo}>＋ 追加</div>
                   )}
                 </div>
+
+                {aiSuggestions.length > 0 && (
+                  <div className="ai-suggest-box">
+                    <p className="ai-suggest-label">AIからの提案</p>
+                    <div className="chip-row">
+                      {aiSuggestions.map((s) => (
+                        <div className="chip suggest" key={s.id} onClick={() => acceptSuggestion(s)}>
+                          {s.content}
+                          <span className="chip-plus">＋</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -971,7 +1106,7 @@ function App() {
               </div>
 
               <div className="mini-garden">
-                {companies.map((c) => (
+                {companies.filter((c) => !c.is_sleeping).map((c) => (
                   <span
                     key={c.id}
                     className="mini-garden-icon"
@@ -1011,14 +1146,67 @@ function App() {
           {activeTab === "companies" && (
             <div className="companies-screen">
               <div className="page-header">
-                <div>
+                <div className="header-fill">
                   <p className="eyebrow">企業</p>
-                  <h1 className="page-title">庭のみんな・全{companies.length}社</h1>
+                  <h1 className="page-title title-right">
+                    庭のみんな・全{companies.filter((c) => !c.is_sleeping).length}社
+                  </h1>
                 </div>
-                <button className="add-btn" onClick={() => setScreen("plant-new")}>＋植える</button>
               </div>
+
+              <div className="control-row">
+                <div className="status-pills">
+                  <div
+                    className={filterType === "all" ? "status-pill active" : "status-pill"}
+                    onClick={() => setFilterType("all")}
+                  >
+                    すべて
+                  </div>
+                  <div
+                    className={filterType === "progress" ? "status-pill active" : "status-pill"}
+                    onClick={() => setFilterType("progress")}
+                  >
+                    選考中
+                  </div>
+                  <div
+                    className={filterType === "fav" ? "status-pill active" : "status-pill"}
+                    onClick={() => setFilterType("fav")}
+                  >
+                    お気に入り
+                  </div>
+                </div>
+                <div className="sort-wrap">
+                  <div className="sort-btn" onClick={() => setSortMenuOpen(!sortMenuOpen)}>
+                    <svg viewBox="0 0 24 24" stroke="var(--ink-soft)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                      <path d="M6 5 V19 M6 19 L3 16 M6 19 L9 16" />
+                      <path d="M18 19 V5 M18 5 L15 8 M18 5 L21 8" />
+                    </svg>
+                  </div>
+                  {sortMenuOpen && (
+                    <div className="sort-menu open">
+                      {[
+                        { key: "interest", label: "志望度が高い順" },
+                        { key: "growth", label: "育ってきた順" },
+                        { key: "new", label: "新しく保存した順" },
+                      ].map((opt) => (
+                        <div
+                          key={opt.key}
+                          className={sortType === opt.key ? "sort-option selected" : "sort-option"}
+                          onClick={() => {
+                            setSortType(opt.key);
+                            setSortMenuOpen(false);
+                          }}
+                        >
+                          {opt.label}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <ul className="company-list">
-                {companies.map((company) => (
+                {sortedCompanies.map((company) => (
                   <li
                     key={company.id}
                     className="company-row"
@@ -1044,15 +1232,51 @@ function App() {
                   </li>
                 ))}
               </ul>
+
+              {companies.filter((c) => c.is_sleeping).length > 0 && (
+                <div className="sleeping-toggle" onClick={() => setShowSleeping(!showSleeping)}>
+                  {showSleeping ? "閉じる ▴" : `眠らせた企業（${companies.filter((c) => c.is_sleeping).length}）社をみる ▾`}
+                </div>
+              )}
+
+              {showSleeping && (
+                <ul className="company-list sleeping-list">
+                  {companies.filter((c) => c.is_sleeping).map((company) => (
+                    <li
+                      key={company.id}
+                      className="company-row"
+                      onClick={() => openDetail(company)}
+                    >
+                      <span className="mini-plant">{STAGE_DISPLAY[company.growth_stage]}</span>
+                      <div className="row-main">
+                        <div className="row-name">{company.company_name}</div>
+                        <div className="row-status">{company.status}</div>
+                      </div>
+                      <div className="row-stars">
+                        {"★".repeat(company.interest_level)}
+                        {"☆".repeat(5 - company.interest_level)}
+                      </div>
+                      <button
+                        className={company.is_favorite ? "fav-btn active" : "fav-btn"}
+                        onClick={(e) => toggleFavorite(company, e)}
+                      >
+                        <svg viewBox="0 0 24 24">
+                          <path d="M12 20 C6 15 3 11.5 3 8 C3 5 5.2 3 8 3 C10 3 11.3 4.3 12 5.5 C12.7 4.3 14 3 16 3 C18.8 3 21 5 21 8 C21 11.5 18 15 12 20 Z" />
+                        </svg>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
 
           {activeTab === "records" && (
             <div className="records-screen">
               <div className="page-header">
-                <div>
+                <div className="header-fill">
                   <p className="eyebrow">記録</p>
-                  <h1 className="page-title">庭の様子</h1>
+                  <h1 className="page-title title-right">庭の様子</h1>
                 </div>
               </div>
 
@@ -1181,12 +1405,59 @@ function App() {
           {activeTab === "settings" && (
             <div className="settings-screen">
               <div className="page-header">
-                <div>
-                  <p className="eyebrow">設定</p>
+                <p className="eyebrow">設定</p>
+                <div className="settings-header-row">
+                  <div className="theme-toggle" onClick={toggleDarkMode}>
+                    {darkMode ? (
+                      <svg viewBox="0 0 24 24" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="4.5" />
+                        <path d="M12 2.5 V5 M12 19 V21.5 M2.5 12 H5 M19 12 H21.5 M5 5 L6.8 6.8 M17.2 17.2 L19 19 M19 5 L17.2 6.8 M6.8 17.2 L5 19" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M18 12.5 A7 7 0 1 1 11.8 5.2 A5.6 5.6 0 0 0 18 12.5 Z" />
+                      </svg>
+                    )}
+                  </div>
                   <h1 className="page-title">設定</h1>
                 </div>
               </div>
-              <p className="settings-placeholder">設定項目は準備中です。</p>
+
+              <div className="section-label">活動について</div>
+              <div className="settings-list">
+                <div className="settings-row">
+                  <span>希望条件</span>
+                  <span className="arrow">›</span>
+                </div>
+                <div className="settings-row">
+                  <span>通知</span>
+                  <span className="arrow">›</span>
+                </div>
+              </div>
+
+              <div className="section-label">データ</div>
+              <div className="settings-list">
+                <div className="settings-row">
+                  <span>データをエクスポート</span>
+                  <span className="arrow">›</span>
+                </div>
+                <div className="settings-row">
+                  <span>データを削除</span>
+                  <span className="arrow">›</span>
+                </div>
+              </div>
+
+              <div className="section-label">その他</div>
+              <div className="settings-list">
+                <div className="settings-row">
+                  <span>このアプリについて</span>
+                  <span className="arrow">›</span>
+                </div>
+              </div>
+
+              <p className="settings-placeholder">
+                各項目の中身は準備中です。まずはダークモードの切り替えだけ使えます。
+              </p>
             </div>
           )}
 
