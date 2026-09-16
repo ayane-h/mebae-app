@@ -1088,6 +1088,62 @@ body {
   min-width: 70px;
 }
 
+.reorder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reorder-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.reorder-row.dragging {
+  opacity: 0.6;
+  border-color: var(--moss);
+}
+
+.reorder-row.editing {
+  border-color: var(--moss);
+  background: var(--paper);
+  box-shadow: 0 0 0 2px rgba(127, 163, 122, 0.25);
+}
+
+.drag-handle {
+  color: var(--ink-soft);
+  font-size: 16px;
+  flex-shrink: 0;
+  padding: 4px 6px;
+  touch-action: none; /* ドラッグ中にスマホの画面スクロールと競合しないようにする */
+  user-select: none;
+  cursor: grab;
+}
+
+.reorder-row.dragging .drag-handle {
+  cursor: grabbing;
+}
+
+.reorder-label {
+  flex: 1;
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.reorder-edit-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  padding: 0;
+  background: transparent;
+}
+
 .chip-x {
   cursor: pointer;
   color: var(--ink-soft);
@@ -1188,6 +1244,94 @@ body {
   cursor: pointer;
 }
 
+/* ---------- ホーム：お気に入りの企業 ---------- */
+.section-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 16px 0 8px;
+}
+
+.section-label-row span:first-child {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.section-link {
+  font-size: 11.5px;
+  color: var(--moss-deep);
+  cursor: pointer;
+}
+
+.garden {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.plant-card {
+  position: relative;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 16px 14px 14px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.plant-card .fav-btn {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+}
+
+.stage-label {
+  font-size: 10.5px;
+  color: var(--moss-deep);
+  background: var(--card-sprout-bg);
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 20px;
+  margin-bottom: 8px;
+}
+
+.plant-card-icon {
+  font-size: 44px;
+  line-height: 1;
+}
+
+.plant-card .name {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 8px 0 2px;
+  color: var(--ink);
+}
+
+.plant-card .status {
+  font-size: 11.5px;
+  color: var(--ink-soft);
+}
+
+.heart-row {
+  margin-top: 8px;
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+}
+
+.heart-row span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--line);
+}
+
+.heart-row span.on {
+  background: var(--coral);
+}
+
 .toggle-note {
   font-size: 11px;
   color: var(--ink-soft);
@@ -1199,6 +1343,7 @@ body {
   font-size: 13px;
   color: var(--ink-soft);
   margin-top: 20px;
+  margin-bottom: 16px;
 }
 
 .settings-header-row {
@@ -1209,6 +1354,11 @@ body {
 
 .title-right {
   text-align: right;
+  margin-top: -11px;
+}
+
+.title-up {
+  margin-top: 9px;
 }
 
 .header-fill {
@@ -1227,6 +1377,7 @@ body {
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
+  margin-top: 6px;
 }
 
 .theme-toggle svg {
@@ -1261,6 +1412,158 @@ body {
 .settings-row .arrow {
   color: var(--ink-soft);
   font-size: 12px;
+}
+
+/* ---------- データ削除の確認画面 ---------- */
+.confirm-delete-box {
+  background: var(--paper);
+  border: 1px solid var(--coral);
+  border-radius: 16px;
+  padding: 20px;
+  margin-top: 10px;
+}
+
+.confirm-delete-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--coral);
+  margin: 0 0 10px;
+}
+
+.confirm-delete-text {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  line-height: 1.7;
+  margin: 0 0 20px;
+}
+
+.confirm-delete-btn {
+  width: 100%;
+  background: var(--coral);
+  color: #fff;
+  border: none;
+  padding: 12px;
+  border-radius: 12px;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+
+.confirm-cancel-btn {
+  width: 100%;
+  background: none;
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  padding: 12px;
+  border-radius: 12px;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+
+/* ---------- このアプリについて ---------- */
+.about-hero {
+  text-align: center;
+  padding: 20px 0 24px;
+}
+
+.about-emoji {
+  font-size: 44px;
+}
+
+.about-name {
+  font-family: 'Shippori Mincho', serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 8px 0 4px;
+}
+
+.about-tagline {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+.about-text {
+  font-size: 12.5px;
+  color: var(--ink);
+  line-height: 1.8;
+  margin: 0;
+}
+
+.about-version {
+  text-align: center;
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin: 20px 0 0;
+}
+
+/* ---------- 植えた直後の提案画面 ---------- */
+.post-plant-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+}
+
+.post-plant-box {
+  width: 100%;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 32px 24px;
+  text-align: center;
+}
+
+.post-plant-emoji {
+  font-size: 44px;
+}
+
+.post-plant-title {
+  font-family: 'Shippori Mincho', serif;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 12px 0 6px;
+}
+
+.post-plant-text {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  margin: 0 0 20px;
+}
+
+.post-plant-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.post-plant-go-btn {
+  width: fit-content;
+  background: var(--btn-bg);
+  color: #fff;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.post-plant-go-btn:hover {
+  background: var(--btn-bg-hover);
+}
+
+.post-plant-later-btn {
+  width: fit-content;
+  background: none;
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  padding: 10px 18px;
+  border-radius: 12px;
+  font-size: 13px;
+  cursor: pointer;
 }
 
 /* ---------- 下部ナビゲーション ---------- */

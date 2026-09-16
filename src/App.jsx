@@ -10,6 +10,14 @@ const STAGE_DISPLAY = {
   flower: "🌼",
 };
 
+// 成長段階 → 表示するラベル文言、の対応表
+const STAGE_LABEL = {
+  seed: "たね",
+  sprout: "双葉",
+  bud: "つぼみ",
+  flower: "花が咲いた",
+};
+
 function App() {
   const [companies, setCompanies] = useState([]);
 
@@ -66,8 +74,15 @@ function App() {
   // どのタブを表示しているか（下部ナビゲーションに対応）
   const [activeTab, setActiveTab] = useState("home"); // "home" | "companies" | "records" | "settings"
   // タブの上に重ねて表示する「画面」（null = 何も重ねていない）
-  const [screen, setScreen] = useState(null); // null | "detail" | "plant-new"
+  const [screen, setScreen] = useState(null); // null | "detail" | "plant-new" | "desired-conditions" | "confirm-delete" | "about" | "post-plant-prompt"
+  const [postPlantCompany, setPostPlantCompany] = useState(null); // 今植えたばかりの企業（{id, company_name}）
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("mebae-dark-mode") === "1");
+  const [desiredConditions, setDesiredConditions] = useState([]);
+  const [addingCondition, setAddingCondition] = useState(false);
+  const [newConditionValue, setNewConditionValue] = useState("");
+  const [draggingId, setDraggingId] = useState(null); // 今つかんでドラッグ中の希望条件のid
+  const [editingConditionId, setEditingConditionId] = useState(null); // タップして編集中の希望条件のid
+  const [editingConditionValue, setEditingConditionValue] = useState("");
 
   // --- 【関数の準備】 ---
   const fetchCompanies = () => {
@@ -122,6 +137,21 @@ function App() {
   const closeDetail = () => {
     setScreen(null);
     setSelectedCompany(null);
+  };
+
+  // 「植えた直後の提案」画面で「照合してみる」を選んだ時の処理
+  // すでに取得済みのcompaniesから該当企業を探して詳細画面を開き、続けて再照合まで行う
+  const startRematchFromPrompt = async () => {
+    if (!postPlantCompany) return;
+    const company = companies.find((c) => c.id === postPlantCompany.id) || {
+      ...postPlantCompany,
+      status: "応募前",
+      interest_level: 3,
+      growth_stage: "seed",
+    };
+    openDetail(company);
+    setPostPlantCompany(null);
+    await rematch(company); // company_idを明示的に渡すので、画面切り替えのタイミングに影響されない
   };
 
   // ★
@@ -183,6 +213,104 @@ function App() {
       localStorage.setItem("mebae-dark-mode", next ? "1" : "0");
       return next;
     });
+  };
+
+  // 希望条件の取得・追加・削除
+  const fetchDesiredConditions = async () => {
+    const res = await fetch("http://localhost:8787/desired-conditions");
+    const data = await res.json();
+    setDesiredConditions(data);
+  };
+
+  const startAddCondition = () => {
+    setAddingCondition(true);
+    setNewConditionValue("");
+  };
+
+  const commitAddCondition = async () => {
+    if (newConditionValue.trim()) {
+      await fetch("http://localhost:8787/desired-conditions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: JSON.stringify({ label: newConditionValue.trim() }),
+      });
+      fetchDesiredConditions();
+    }
+    setAddingCondition(false);
+    setNewConditionValue("");
+  };
+
+  const deleteCondition = async (id) => {
+    await fetch(`http://localhost:8787/desired-conditions/${id}`, { method: "DELETE" });
+    fetchDesiredConditions();
+  };
+
+  // ドラッグで並び替える：draggedId を、targetId の位置に移動させる
+  const moveCondition = (draggedId, targetId) => {
+    if (draggedId === targetId) return;
+    setDesiredConditions((prev) => {
+      const next = [...prev];
+      const fromIndex = next.findIndex((c) => c.id === draggedId);
+      const toIndex = next.findIndex((c) => c.id === targetId);
+      if (fromIndex === -1 || toIndex === -1) return prev;
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+  };
+
+  // ドラッグが終わったタイミングで、今の並び順をまとめてサーバーに保存する
+  const saveConditionOrder = () => {
+    if (!draggingId) return;
+    setDraggingId(null);
+    const order = desiredConditions.map((c) => c.id);
+    fetch("http://localhost:8787/desired-conditions/reorder", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ order }),
+    });
+  };
+
+  // 希望条件の文言をタップして編集する
+  const startEditCondition = (c) => {
+    setEditingConditionId(c.id);
+    setEditingConditionValue(c.label);
+  };
+
+  const commitEditCondition = async () => {
+    const trimmed = editingConditionValue.trim();
+    if (trimmed && editingConditionId) {
+      await fetch(`http://localhost:8787/desired-conditions/${editingConditionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: JSON.stringify({ label: trimmed }),
+      });
+      fetchDesiredConditions();
+    }
+    setEditingConditionId(null);
+  };
+
+  // データをJSONファイルとしてダウンロードする
+  const exportData = async () => {
+    const res = await fetch("http://localhost:8787/export");
+    const data = await res.json();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const today = new Date().toISOString().slice(0, 10); // "2026-09-16" の形式
+    a.href = url;
+    a.download = `mebae-export-${today}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // 全データを削除する
+  const deleteAllData = async () => {
+    await fetch("http://localhost:8787/all-data", { method: "DELETE" });
+    setScreen(null);
+    setActiveTab("home");
+    fetchCompanies();
+    fetchRecords();
   };
 
   // いいな・気になる(その会社の一覧を取得)
@@ -278,11 +406,13 @@ function App() {
   };
 
   // 「AIに再照合してもらう」を実行する関数
-  const rematch = async () => {
+  // targetCompanyを渡さなければ、今開いている詳細画面(selectedCompany)を対象にする
+  const rematch = async (targetCompany) => {
+    const company = targetCompany || selectedCompany;
     setIsRematching(true);
 
     try {
-      const body = JSON.stringify({ company_id: selectedCompany.id });
+      const body = JSON.stringify({ company_id: company.id });
       const bodyBytes = new TextEncoder().encode(body);
 
       const res = await fetch("http://localhost:8787/requirement-matches/rematch", {
@@ -297,10 +427,10 @@ function App() {
         return;
       }
 
-      await fetchRequirementMatches(selectedCompany.id);
-      fetchAiSuggestions(selectedCompany.id);
+      await fetchRequirementMatches(company.id);
+      fetchAiSuggestions(company.id);
       fetchCompanies();
-      fetchCompanyRecords(selectedCompany.id);
+      fetchCompanyRecords(company.id);
       fetchRecords();
     } finally {
       setIsRematching(false);
@@ -510,7 +640,8 @@ function App() {
       });
     }
 
-    // フォームの中身を全部リセットする
+    // フォームの中身を全部リセットする（会社名は、提案画面に表示するため先に控えておく）
+    const registeredName = companyName;
     setCompanyName("");
     setJobUrl("");
     setJobText("");
@@ -520,7 +651,14 @@ function App() {
 
     fetchCompanies();
     fetchRecords();
-    setScreen(null); // 登録が終わったら、画面を閉じてタブ表示に戻る
+
+    // 求人票を入力していた場合だけ、「照合してみますか？」の提案画面を出す
+    if (jobText.trim()) {
+      setPostPlantCompany({ id: newCompanyId, company_name: registeredName });
+      setScreen("post-plant-prompt");
+    } else {
+      setScreen(null);
+    }
   };
 
   // --- 集計（記録タブ・ホームタブで使う） ---
@@ -543,6 +681,9 @@ function App() {
   const latestRecordCompany = latestRecord
     ? companies.find((c) => c.id === latestRecord.company_id)
     : null;
+
+  // ホームの「お気に入りの企業」用
+  const favoriteCompanies = companies.filter((c) => !c.is_sleeping && c.is_favorite);
 
   // 「最近の記録」用：同じ日・同じ企業の記録を1行にまとめる
   // （recordsはすでに新しい順に並んでいるので、上から順に処理すれば自然と新しい順のグループになる）
@@ -1089,6 +1230,175 @@ function App() {
             <button type="submit" className="plant-submit-btn">植える</button>
           </form>
         </div>
+      ) : screen === "desired-conditions" ? (
+        // ============ 希望条件の管理画面 ============
+        <div className="desired-conditions-screen">
+          <div className="screen-header">
+            <button className="back-btn" onClick={() => setScreen(null)}>←</button>
+            <span className="screen-title">希望条件</span>
+          </div>
+
+          <p className="settings-placeholder">
+            転職先に求める条件です。ここに登録した条件が、希望条件との照合で使われます。ハンドル（≡）を掴んで、ドラッグで並び替えられます。
+          </p>
+
+          <div className="block">
+            <div className="reorder-list">
+              {desiredConditions.map((c) => (
+                <div
+                  key={c.id}
+                  data-condition-id={c.id}
+                  className={[
+                    "reorder-row",
+                    c.id === draggingId ? "dragging" : "",
+                    c.id === editingConditionId ? "editing" : "",
+                  ].join(" ").trim()}
+                >
+                  <span
+                    className="drag-handle"
+                    onPointerDown={(e) => {
+                      e.currentTarget.setPointerCapture(e.pointerId);
+                      setDraggingId(c.id);
+                    }}
+                    onPointerMove={(e) => {
+                      if (draggingId === null) return;
+                      const el = document.elementFromPoint(e.clientX, e.clientY);
+                      const rowEl = el && el.closest("[data-condition-id]");
+                      if (rowEl) {
+                        moveCondition(draggingId, Number(rowEl.getAttribute("data-condition-id")));
+                      }
+                    }}
+                    onPointerUp={saveConditionOrder}
+                    onPointerCancel={saveConditionOrder}
+                  >
+                    ≡
+                  </span>
+                  {editingConditionId === c.id ? (
+                    <input
+                      className="chip-edit-input reorder-edit-input"
+                      autoFocus
+                      value={editingConditionValue}
+                      onChange={(e) => setEditingConditionValue(e.target.value)}
+                      onBlur={commitEditCondition}
+                      onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
+                    />
+                  ) : (
+                    <span className="reorder-label" onClick={() => startEditCondition(c)}>
+                      {c.label}
+                    </span>
+                  )}
+                  <span
+                    className="chip-x"
+                    onClick={() => deleteCondition(c.id)}
+                  >
+                    ×
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="chip-row" style={{ marginTop: "10px" }}>
+              {addingCondition ? (
+                <input
+                  className="chip-edit-input"
+                  autoFocus
+                  value={newConditionValue}
+                  onChange={(e) => setNewConditionValue(e.target.value)}
+                  onBlur={commitAddCondition}
+                  onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
+                />
+              ) : (
+                <div className="chip add-chip" onClick={startAddCondition}>＋ 追加</div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : screen === "confirm-delete" ? (
+        // ============ データ削除の確認画面 ============
+        <div className="confirm-delete-screen">
+          <div className="screen-header">
+            <button className="back-btn" onClick={() => setScreen(null)}>←</button>
+            <span className="screen-title">データを削除</span>
+          </div>
+
+          <div className="confirm-delete-box">
+            <p className="confirm-delete-title">本当に削除しますか？</p>
+            <p className="confirm-delete-text">
+              企業の記録・いいな気になる・本音・メモ・希望条件など、すべてのデータが削除されます。この操作は取り消せません。先に「データをエクスポート」でバックアップを取っておくことをおすすめします。
+            </p>
+            <button className="confirm-delete-btn" onClick={deleteAllData}>
+              すべて削除する
+            </button>
+            <button className="confirm-cancel-btn" onClick={() => setScreen(null)}>
+              キャンセル
+            </button>
+          </div>
+        </div>
+      ) : screen === "about" ? (
+        // ============ このアプリについて ============
+        <div className="about-screen">
+          <div className="screen-header">
+            <button className="back-btn" onClick={() => setScreen(null)}>←</button>
+            <span className="screen-title">このアプリについて</span>
+          </div>
+
+          <div className="about-hero">
+            <span className="about-emoji">🌱</span>
+            <p className="about-name">めばえ</p>
+            <p className="about-tagline">転職活動を、庭で植物を育てるように</p>
+          </div>
+
+          <div className="block">
+            <p className="field-label">コンセプト</p>
+            <p className="about-text">
+              応募した企業を1本の植物に見立てて記録するアプリです。<br />
+              求人票の照合・いいな気になる・本音・選考メモなど、企業について知ったことの数だけ、植物が育っていきます。選考結果の良し悪しではなく、「その企業とどれだけ向き合えたか」を大事にする設計にしています。
+            </p>
+          </div>
+
+          <div className="block">
+            <p className="field-label">主な機能</p>
+            <p className="about-text">
+              ・求人票とAIによる希望条件の自動照合<br />
+              ・選考フローの自動抽出<br />
+              ・AIによる選考メモの提案<br />
+              ・企業ごとの記録タイムライン<br />
+              ・ダークモード
+            </p>
+          </div>
+
+          <div className="block" style={{ marginBottom: 0 }}>
+            <p className="field-label">使用技術</p>
+            <p className="about-text">
+              React ・ Cloudflare Workers ・ Cloudflare D1 ・ Gemini API
+            </p>
+          </div>
+
+          <p className="about-version">めばえ v1.0.0（個人開発）</p>
+        </div>
+      ) : screen === "post-plant-prompt" && postPlantCompany ? (
+        // ============ 植えた直後の提案画面 ============
+        <div className="post-plant-screen">
+          <div className="post-plant-box">
+            <span className="post-plant-emoji">🌱</span>
+            <p className="post-plant-title">{postPlantCompany.company_name}を植えました</p>
+            <p className="post-plant-text">求人票と希望条件を照らし合わせてみますか？</p>
+            <div className="post-plant-buttons">
+              <button className="post-plant-go-btn" onClick={startRematchFromPrompt}>
+                照合してみる
+              </button>
+              <button
+                className="post-plant-later-btn"
+                onClick={() => {
+                  setPostPlantCompany(null);
+                  setScreen(null);
+                }}
+              >
+                あとで
+              </button>
+            </div>
+          </div>
+        </div>
       ) : (
         // ============ タブ表示（ホーム／企業一覧／記録／設定） ============
         <>
@@ -1098,9 +1408,6 @@ function App() {
                 <div>
                   <p className="eyebrow">おかえりなさい</p>
                   <h1 className="page-title">今日の庭</h1>
-                  <p className="home-summary">
-                    育てている{growingCount}社・選考中{interviewingCount}社・内定{offerCount}社
-                  </p>
                 </div>
                 <button className="add-btn" onClick={() => setScreen("plant-new")}>＋植える</button>
               </div>
@@ -1135,6 +1442,46 @@ function App() {
                         {latestRecord.note ? `・${latestRecord.note}` : ""}
                       </div>
                     </div>
+                  </div>
+                </>
+              )}
+
+              {favoriteCompanies.length > 0 && (
+                <>
+                  <div className="section-label-row">
+                    <span>お気に入りの企業</span>
+                    <span
+                      className="section-link"
+                      onClick={() => {
+                        setActiveTab("companies");
+                        setFilterType("fav");
+                      }}
+                    >
+                      すべて見る →
+                    </span>
+                  </div>
+                  <div className="garden">
+                    {favoriteCompanies.slice(0, 4).map((c) => (
+                      <div className="plant-card" key={c.id} onClick={() => openDetail(c)}>
+                        <button
+                          className={c.is_favorite ? "fav-btn active" : "fav-btn"}
+                          onClick={(e) => toggleFavorite(c, e)}
+                        >
+                          <svg viewBox="0 0 24 24">
+                            <path d="M12 20 C6 15 3 11.5 3 8 C3 5 5.2 3 8 3 C10 3 11.3 4.3 12 5.5 C12.7 4.3 14 3 16 3 C18.8 3 21 5 21 8 C21 11.5 18 15 12 20 Z" />
+                          </svg>
+                        </button>
+                        <span className="stage-label">{STAGE_LABEL[c.growth_stage]}</span>
+                        <div className="plant-card-icon">{STAGE_DISPLAY[c.growth_stage]}</div>
+                        <div className="name">{c.company_name}</div>
+                        <div className="status">{c.status}</div>
+                        <div className="heart-row">
+                          {[1, 2, 3, 4, 5].map((n) => (
+                            <span key={n} className={n <= c.interest_level ? "on" : ""}></span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </>
               )}
@@ -1419,29 +1766,31 @@ function App() {
                       </svg>
                     )}
                   </div>
-                  <h1 className="page-title">設定</h1>
+                  <h1 className="page-title title-up">設定</h1>
                 </div>
               </div>
 
               <div className="section-label">活動について</div>
               <div className="settings-list">
-                <div className="settings-row">
+                <div
+                  className="settings-row"
+                  onClick={() => {
+                    fetchDesiredConditions();
+                    setScreen("desired-conditions");
+                  }}
+                >
                   <span>希望条件</span>
-                  <span className="arrow">›</span>
-                </div>
-                <div className="settings-row">
-                  <span>通知</span>
                   <span className="arrow">›</span>
                 </div>
               </div>
 
               <div className="section-label">データ</div>
               <div className="settings-list">
-                <div className="settings-row">
+                <div className="settings-row" onClick={exportData}>
                   <span>データをエクスポート</span>
                   <span className="arrow">›</span>
                 </div>
-                <div className="settings-row">
+                <div className="settings-row" onClick={() => setScreen("confirm-delete")}>
                   <span>データを削除</span>
                   <span className="arrow">›</span>
                 </div>
@@ -1449,15 +1798,12 @@ function App() {
 
               <div className="section-label">その他</div>
               <div className="settings-list">
-                <div className="settings-row">
+                <div className="settings-row" onClick={() => setScreen("about")}>
                   <span>このアプリについて</span>
                   <span className="arrow">›</span>
                 </div>
               </div>
 
-              <p className="settings-placeholder">
-                各項目の中身は準備中です。まずはダークモードの切り替えだけ使えます。
-              </p>
             </div>
           )}
 
