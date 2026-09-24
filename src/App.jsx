@@ -1,3 +1,4 @@
+import { SignedIn, SignedOut, SignIn } from "@clerk/clerk-react";
 import { useState, useEffect } from "react";
 import './App.css';
 
@@ -761,6 +762,14 @@ function App() {
   }
 
   return (
+    <>
+    <SignedOut>
+      <div className="login-screen">
+        <SignIn />
+      </div>
+    </SignedOut>
+
+    <SignedIn>
     <div className="page">
       {screen === "detail" && selectedCompany ? (
         // ============ 企業詳細画面（タブの上に重ねて表示） ============
@@ -1863,6 +1872,8 @@ function App() {
         </>
       )}
     </div>
+    </SignedIn>
+  </>
   );
 }
 
