@@ -1,6 +1,10 @@
-import { SignedIn, SignedOut, SignIn } from "@clerk/clerk-react";
+import { SignedIn, SignedOut, SignIn, useAuth, useUser, useClerk } from "@clerk/clerk-react";
 import { useState, useEffect } from "react";
 import './App.css';
+
+// APIの場所。ローカルでは自分のPCで動かしているWorker。
+// Vercelなどで公開する時は、環境変数 VITE_API_BASE_URL に本番のWorkerのURLを入れて切り替える
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8787";
 
 // 成長段階 → 表示する内容、の対応表
 // 今は絵文字だが、後で画像やSVGに差し替える時はここだけ直せばよい
@@ -19,7 +23,15 @@ const STAGE_LABEL = {
   flower: "花が咲いた",
 };
 
+// ひとことメモの最大文字数（バックエンドの SHORT_MEMO_MAX と同じ値にしておく）
+const SHORT_MEMO_MAX = 10;
+
 function App() {
+  // ログイン状態と、APIに添えるトークンを取り出す（Clerkの部品）
+  const { getToken, isLoaded, isSignedIn } = useAuth();
+  const { user } = useUser();       // ログイン中の本人の情報（メールアドレスなど）
+  const { signOut } = useClerk();   // ログアウトを実行する関数
+
   const [companies, setCompanies] = useState([]);
 
   // ＋植えるフォームの入力内容を覚えておく箱
@@ -35,6 +47,8 @@ function App() {
   const [editingImpressionValue, setEditingImpressionValue] = useState(""); // 編集中の文字
   const [editingHonne, setEditingHonne] = useState(false); // 本音を編集中かどうか（モックアップのhonne-box）
   const [honne, setHonne] = useState(null);
+  const [editingShortMemo, setEditingShortMemo] = useState(false); // ひとことメモを編集中かどうか
+  const [shortMemoDraft, setShortMemoDraft] = useState(""); // ひとことメモの編集中の文字
   const [memos, setMemos] = useState([]);
   const [addingMemo, setAddingMemo] = useState(false); // メモの＋追加チップが入力中かどうか
   const [newMemoValue, setNewMemoValue] = useState(""); // 新規メモの入力中の文字
@@ -86,30 +100,44 @@ function App() {
   const [editingConditionValue, setEditingConditionValue] = useState("");
 
   // --- 【関数の準備】 ---
-  const fetchCompanies = () => {
-    fetch("http://localhost:8787/companies")
-      .then((res) => res.json())
-      .then((data) => {
-        setCompanies(data);
-        // 詳細画面で表示中の企業（selectedCompany）も、同じタイミングで最新化する
-        setSelectedCompany((prev) => {
-          if (!prev) return prev;
-          const updated = data.find((c) => c.id === prev.id);
-          return updated || prev;
-        });
-      });
+
+  // APIを呼び出す共通の関数。ログイン中のユーザーのトークンを、毎回自動で添える
+  // （これまでの fetch("http://localhost:8787/...") の代わりに、apiFetch("/...") と書く）
+  const apiFetch = async (path, options = {}) => {
+    const token = await getToken();
+    const headers = { ...(options.headers || {}) };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return fetch(`${API_BASE}${path}`, { ...options, headers });
   };
 
-  const fetchRecords = () => {
-    fetch("http://localhost:8787/records")
-      .then((res) => res.json())
-      .then((data) => setRecords(data));
+  // GETして、成功した時だけ中身（JSON）を返す。失敗した時は null を返す
+  // （ログイン切れなどで返ってきたエラーの内容を、一覧データとして扱って画面が壊れるのを防ぐ）
+  const apiGetJson = async (path) => {
+    const res = await apiFetch(path);
+    if (!res.ok) return null;
+    return res.json();
+  };
+
+  const fetchCompanies = async () => {
+    const data = await apiGetJson("/companies");
+    if (!data) return;
+    setCompanies(data);
+    // 詳細画面で表示中の企業（selectedCompany）も、同じタイミングで最新化する
+    setSelectedCompany((prev) => {
+      if (!prev) return prev;
+      const updated = data.find((c) => c.id === prev.id);
+      return updated || prev;
+    });
+  };
+
+  const fetchRecords = async () => {
+    const data = await apiGetJson("/records");
+    if (data) setRecords(data);
   };
 
   const fetchCompanyRecords = async (companyId) => {
-    const res = await fetch(`http://localhost:8787/records?company_id=${companyId}`);
-    const data = await res.json();
-    setCompanyRecords(data);
+    const data = await apiGetJson(`/records?company_id=${companyId}`);
+    if (data) setCompanyRecords(data);
   };
 
   // 企業詳細画面を開く（一覧・ホームどちらから呼んでも同じ動きになるようまとめておく）
@@ -129,6 +157,7 @@ function App() {
     setAddingImpressionType(null);
     setEditingImpressionId(null);
     setEditingHonne(false);
+    setEditingShortMemo(false);
     setAddingMemo(false);
     setEditingMemoId(null);
     setScreen("detail");
@@ -157,7 +186,7 @@ function App() {
 
   // ★
   const updateInterestLevel = async (id, newLevel) => {
-    await fetch(`http://localhost:8787/companies/${id}`, {
+    await apiFetch(`/companies/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json; charset=utf-8" },
       body: JSON.stringify({ interest_level: newLevel }),
@@ -170,7 +199,7 @@ function App() {
 
   // 選考ステータス
   const updateStatus = async (id, newStatus) => {
-    await fetch(`http://localhost:8787/companies/${id}`, {
+    await apiFetch(`/companies/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json; charset=utf-8" },
       body: JSON.stringify({ status: newStatus }),
@@ -186,7 +215,7 @@ function App() {
     if (e) e.stopPropagation();
     const newValue = company.is_favorite ? 0 : 1;
 
-    await fetch(`http://localhost:8787/companies/${company.id}`, {
+    await apiFetch(`/companies/${company.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json; charset=utf-8" },
       body: JSON.stringify({ is_favorite: newValue }),
@@ -198,7 +227,7 @@ function App() {
   // 「眠らせる」の切り替え
   const toggleSleeping = async (company) => {
     const newValue = company.is_sleeping ? 0 : 1;
-    await fetch(`http://localhost:8787/companies/${company.id}`, {
+    await apiFetch(`/companies/${company.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json; charset=utf-8" },
       body: JSON.stringify({ is_sleeping: newValue }),
@@ -218,9 +247,8 @@ function App() {
 
   // 希望条件の取得・追加・削除
   const fetchDesiredConditions = async () => {
-    const res = await fetch("http://localhost:8787/desired-conditions");
-    const data = await res.json();
-    setDesiredConditions(data);
+    const data = await apiGetJson("/desired-conditions");
+    if (data) setDesiredConditions(data);
   };
 
   const startAddCondition = () => {
@@ -230,7 +258,7 @@ function App() {
 
   const commitAddCondition = async () => {
     if (newConditionValue.trim()) {
-      await fetch("http://localhost:8787/desired-conditions", {
+      await apiFetch("/desired-conditions", {
         method: "POST",
         headers: { "Content-Type": "application/json; charset=utf-8" },
         body: JSON.stringify({ label: newConditionValue.trim() }),
@@ -242,7 +270,7 @@ function App() {
   };
 
   const deleteCondition = async (id) => {
-    await fetch(`http://localhost:8787/desired-conditions/${id}`, { method: "DELETE" });
+    await apiFetch(`/desired-conditions/${id}`, { method: "DELETE" });
     fetchDesiredConditions();
   };
 
@@ -265,7 +293,7 @@ function App() {
     if (!draggingId) return;
     setDraggingId(null);
     const order = desiredConditions.map((c) => c.id);
-    fetch("http://localhost:8787/desired-conditions/reorder", {
+    apiFetch("/desired-conditions/reorder", {
       method: "PATCH",
       headers: { "Content-Type": "application/json; charset=utf-8" },
       body: JSON.stringify({ order }),
@@ -281,7 +309,7 @@ function App() {
   const commitEditCondition = async () => {
     const trimmed = editingConditionValue.trim();
     if (trimmed && editingConditionId) {
-      await fetch(`http://localhost:8787/desired-conditions/${editingConditionId}`, {
+      await apiFetch(`/desired-conditions/${editingConditionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json; charset=utf-8" },
         body: JSON.stringify({ label: trimmed }),
@@ -293,7 +321,11 @@ function App() {
 
   // データをJSONファイルとしてダウンロードする
   const exportData = async () => {
-    const res = await fetch("http://localhost:8787/export");
+    const res = await apiFetch("/export");
+    if (!res.ok) {
+      alert("エクスポートに失敗しました。もう一度お試しください。");
+      return;
+    }
     const data = await res.json();
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -305,9 +337,13 @@ function App() {
     URL.revokeObjectURL(url);
   };
 
-  // 全データを削除する
+  // 全データを削除する（自分のデータだけが対象）
   const deleteAllData = async () => {
-    await fetch("http://localhost:8787/all-data", { method: "DELETE" });
+    const res = await apiFetch("/all-data", { method: "DELETE" });
+    if (!res.ok) {
+      alert("削除に失敗しました。もう一度お試しください。");
+      return;
+    }
     setScreen(null);
     setActiveTab("home");
     fetchCompanies();
@@ -316,9 +352,8 @@ function App() {
 
   // いいな・気になる(その会社の一覧を取得)
   const fetchImpressions = async (companyId) => {
-    const res = await fetch(`http://127.0.0.1:8787/impressions?company_id=${companyId}`);
-    const data = await res.json();
-    setImpressions(data);
+    const data = await apiGetJson(`/impressions?company_id=${companyId}`);
+    if (data) setImpressions(data);
   };
 
   // (いいな・気になるを追加。contentを引数で受け取る形に変更)
@@ -332,7 +367,7 @@ function App() {
     });
     const bodyBytes = new TextEncoder().encode(body);
 
-    await fetch("http://127.0.0.1:8787/impressions", {
+    await apiFetch("/impressions", {
       method: "POST",
       headers: { "Content-Type": "application/json; charset=utf-8" },
       body: bodyBytes,
@@ -369,7 +404,7 @@ function App() {
   const commitEditImpression = async () => {
     const trimmed = editingImpressionValue.trim();
     if (trimmed && editingImpressionId) {
-      await fetch(`http://localhost:8787/impressions/${editingImpressionId}`, {
+      await apiFetch(`/impressions/${editingImpressionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json; charset=utf-8" },
         body: JSON.stringify({ content: trimmed }),
@@ -381,28 +416,26 @@ function App() {
 
   // (いいな・気になるから1件削除)
   const deleteImpression = async (id) => {
-    await fetch(`http://127.0.0.1:8787/impressions/${id}`, { method: "DELETE" });
+    await apiFetch(`/impressions/${id}`, { method: "DELETE" });
     fetchImpressions(selectedCompany.id);
   };
 
   // 照合結果を取得する
   const fetchRequirementMatches = async (companyId) => {
-    const res = await fetch(`http://localhost:8787/requirement-matches?company_id=${companyId}`);
-    const data = await res.json();
-    setRequirementMatches(data);
+    const data = await apiGetJson(`/requirement-matches?company_id=${companyId}`);
+    if (data) setRequirementMatches(data);
   };
 
   // AIからの選考メモ提案を取得する
   const fetchAiSuggestions = async (companyId) => {
-    const res = await fetch(`http://localhost:8787/ai-suggestions?company_id=${companyId}`);
-    const data = await res.json();
-    setAiSuggestions(data);
+    const data = await apiGetJson(`/ai-suggestions?company_id=${companyId}`);
+    if (data) setAiSuggestions(data);
   };
 
   // 提案チップをタップして採用する：選考メモに追加し、提案からは消す
   const acceptSuggestion = async (suggestion) => {
     await addMemo(suggestion.content);
-    await fetch(`http://localhost:8787/ai-suggestions/${suggestion.id}`, { method: "DELETE" });
+    await apiFetch(`/ai-suggestions/${suggestion.id}`, { method: "DELETE" });
     setAiSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
   };
 
@@ -416,7 +449,7 @@ function App() {
       const body = JSON.stringify({ company_id: company.id });
       const bodyBytes = new TextEncoder().encode(body);
 
-      const res = await fetch("http://localhost:8787/requirement-matches/rematch", {
+      const res = await apiFetch("/requirement-matches/rematch", {
         method: "POST",
         headers: { "Content-Type": "application/json; charset=utf-8" },
         body: bodyBytes,
@@ -440,7 +473,7 @@ function App() {
 
   // 求人票の本文を保存してから、続けてAIに再照合してもらう
   const saveJobTextAndRematch = async () => {
-    await fetch(`http://localhost:8787/companies/${selectedCompany.id}`, {
+    await apiFetch(`/companies/${selectedCompany.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json; charset=utf-8" },
       body: JSON.stringify({ job_text: jobTextDraft }),
@@ -456,7 +489,7 @@ function App() {
   };
 
   const saveSelectionFlow = async () => {
-    await fetch(`http://localhost:8787/companies/${selectedCompany.id}`, {
+    await apiFetch(`/companies/${selectedCompany.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json; charset=utf-8" },
       body: JSON.stringify({ selection_flow: selectionFlowDraft }),
@@ -482,7 +515,7 @@ function App() {
       prev.map((m) => (m.id === match.id ? { ...m, mark: nextMark, manually_edited: 1 } : m))
     );
 
-    await fetch(`http://localhost:8787/requirement-matches/${match.id}`, {
+    await apiFetch(`/requirement-matches/${match.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json; charset=utf-8" },
       body: JSON.stringify({ mark: nextMark }),
@@ -491,7 +524,8 @@ function App() {
 
   // 本音の取得・保存
   const fetchHonne = async (companyId) => {
-    const res = await fetch(`http://127.0.0.1:8787/honne?company_id=${companyId}`);
+    const res = await apiFetch(`/honne?company_id=${companyId}`);
+    if (!res.ok) return;
     const data = await res.json();
     setHonne(data ? data.content : "");
   };
@@ -503,7 +537,7 @@ function App() {
     });
     const bodyBytes = new TextEncoder().encode(body);
 
-    await fetch("http://127.0.0.1:8787/honne", {
+    await apiFetch("/honne", {
       method: "PUT",
       headers: { "Content-Type": "application/json; charset=utf-8" },
       body: bodyBytes,
@@ -515,11 +549,35 @@ function App() {
     setEditingHonne(false);
   };
 
+  // ひとことメモ：タップで編集を始める
+  const startEditShortMemo = () => {
+    setShortMemoDraft(selectedCompany.short_memo || "");
+    setEditingShortMemo(true);
+  };
+
+  // ひとことメモ：確定して保存する（中身が変わっていなければ、APIは呼ばない）
+  const saveShortMemo = async () => {
+    setEditingShortMemo(false);
+    const trimmed = shortMemoDraft.trim();
+    if (trimmed === (selectedCompany.short_memo || "")) return;
+
+    const res = await apiFetch(`/companies/${selectedCompany.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ short_memo: trimmed }),
+    });
+    if (!res.ok) {
+      alert("ひとことメモの保存に失敗しました");
+      return;
+    }
+    setSelectedCompany((prev) => prev && { ...prev, short_memo: trimmed || null });
+    fetchCompanies();
+  };
+
   // 確認したいこと・選考メモの取得・追加・削除
   const fetchMemos = async (companyId) => {
-    const res = await fetch(`http://127.0.0.1:8787/memos?company_id=${companyId}`);
-    const data = await res.json();
-    setMemos(data);
+    const data = await apiGetJson(`/memos?company_id=${companyId}`);
+    if (data) setMemos(data);
   };
 
   // (メモを追加。contentを引数で受け取る形に変更)
@@ -532,7 +590,7 @@ function App() {
     });
     const bodyBytes = new TextEncoder().encode(body);
 
-    await fetch("http://127.0.0.1:8787/memos", {
+    await apiFetch("/memos", {
       method: "POST",
       headers: { "Content-Type": "application/json; charset=utf-8" },
       body: bodyBytes,
@@ -569,7 +627,7 @@ function App() {
   const commitEditMemo = async () => {
     const trimmed = editingMemoValue.trim();
     if (trimmed && editingMemoId) {
-      await fetch(`http://localhost:8787/memos/${editingMemoId}`, {
+      await apiFetch(`/memos/${editingMemoId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json; charset=utf-8" },
         body: JSON.stringify({ content: trimmed }),
@@ -580,21 +638,44 @@ function App() {
   };
 
   const deleteMemo = async (id) => {
-    await fetch(`http://127.0.0.1:8787/memos/${id}`, { method: "DELETE" });
+    await apiFetch(`/memos/${id}`, { method: "DELETE" });
     fetchMemos(selectedCompany.id);
   };
 
-  // 【自動実行・副作用】画面が最初に表示された時に1回だけ実行される
+  // 【自動実行・副作用】ログインが確認できたら、企業一覧を取得する
+  // （ログイン前に取得しようとしても、APIから断られるだけなので、ログイン後に実行する）
   useEffect(() => {
-    fetchCompanies();
-  }, []);
+    if (isLoaded && isSignedIn) {
+      fetchCompanies();
+    }
+  }, [isLoaded, isSignedIn]);
+
+  // ログアウトした（またはログインの有効期限が切れた）時は、
+  // 前の人のデータが画面に残らないよう、表示中のデータを空にして最初の画面に戻す
+  useEffect(() => {
+    if (isLoaded && !isSignedIn) {
+      setCompanies([]);
+      setRecords([]);
+      setCompanyRecords([]);
+      setSelectedCompany(null);
+      setImpressions([]);
+      setHonne(null);
+      setMemos([]);
+      setRequirementMatches([]);
+      setAiSuggestions([]);
+      setDesiredConditions([]);
+      setPostPlantCompany(null);
+      setScreen(null);
+      setActiveTab("home");
+    }
+  }, [isLoaded, isSignedIn]);
 
   // ホーム・記録タブを表示する時に、記録ログを取得する
   useEffect(() => {
-    if (activeTab === "home" || activeTab === "records") {
+    if (isLoaded && isSignedIn && (activeTab === "home" || activeTab === "records")) {
       fetchRecords();
     }
-  }, [activeTab]);
+  }, [activeTab, isLoaded, isSignedIn]);
 
   // ダークモードの状態が変わるたびに、<body>タグ自体にdarkクラスをつけ外しする
   // （背景色・文字色の大元がbodyタグで決まっているため、.pageだけでは届かない）
@@ -613,11 +694,15 @@ function App() {
     });
     const bodyBytes = new TextEncoder().encode(body);
 
-    const res = await fetch("http://localhost:8787/companies", {
+    const res = await apiFetch("/companies", {
       method: "POST",
       headers: { "Content-Type": "application/json; charset=utf-8" },
       body: bodyBytes,
     });
+    if (!res.ok) {
+      alert("企業の登録に失敗しました。もう一度お試しください。");
+      return;
+    }
     const data = await res.json();
     const newCompanyId = data.id;
 
@@ -634,7 +719,7 @@ function App() {
         company_id: newCompanyId,
         contents: impressionContents,
       });
-      await fetch("http://127.0.0.1:8787/impressions/batch", {
+      await apiFetch("/impressions/batch", {
         method: "POST",
         headers: { "Content-Type": "application/json; charset=utf-8" },
         body: new TextEncoder().encode(impBody),
@@ -761,6 +846,7 @@ function App() {
     });
   }
 
+
   return (
     <>
     <SignedOut>
@@ -810,6 +896,34 @@ function App() {
             <p className="stage-caption">
               この会社について、{impressions.length + memos.length + (honne && honne.trim() ? 1 : 0)}つのことを知りました
             </p>
+            {editingShortMemo ? (
+              <div className="short-memo-edit-wrap">
+                <input
+                  className="short-memo-input"
+                  autoFocus
+                  maxLength={SHORT_MEMO_MAX}
+                  value={shortMemoDraft}
+                  onChange={(e) => setShortMemoDraft(e.target.value)}
+                  onBlur={saveShortMemo}
+                  onKeyDown={(e) => {
+                    // 日本語の変換確定のEnterでは閉じないようにする
+                    if (e.key === "Enter" && !e.nativeEvent.isComposing) e.target.blur();
+                  }}
+                  placeholder="ひとことメモ"
+                />
+                <span className="short-memo-count">
+                  {shortMemoDraft.length}/{SHORT_MEMO_MAX}
+                </span>
+              </div>
+            ) : (
+              <div className="short-memo-box" onClick={startEditShortMemo}>
+                {selectedCompany.short_memo ? (
+                  <span className="short-memo-text">{selectedCompany.short_memo}</span>
+                ) : (
+                  <span className="short-memo-placeholder">＋ ひとことメモ</span>
+                )}
+              </div>
+            )}
             <button
               className={selectedCompany.is_favorite ? "fav-btn active" : "fav-btn"}
               onClick={(e) => toggleFavorite(selectedCompany, e)}
@@ -1236,7 +1350,14 @@ function App() {
               />
             </div>
 
-            <button type="submit" className="plant-submit-btn">植える</button>
+            <button type="submit" className="plant-submit-btn">
+              <svg className="submit-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 20 V11" />
+                <path d="M12 14 C7 14 6 10 6 7 C10 7 12 9.5 12 14 Z" />
+                <path d="M12 12 C17 12 18 8.5 18 6 C14 6 12 8 12 12 Z" />
+              </svg>
+              植える
+            </button>
           </form>
         </div>
       ) : screen === "desired-conditions" ? (
@@ -1418,7 +1539,12 @@ function App() {
                   <p className="eyebrow">おかえりなさい</p>
                   <h1 className="page-title">今日の庭</h1>
                 </div>
-                <button className="add-btn" onClick={() => setScreen("plant-new")}>＋植える</button>
+                <button className="add-btn" onClick={() => setScreen("plant-new")}>
+                  <svg viewBox="0 0 24 24" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" fill="none">
+                    <path d="M12 5 V19 M5 12 H19" />
+                  </svg>
+                  植える
+                </button>
               </div>
 
               <div className="mini-garden">
@@ -1571,11 +1697,14 @@ function App() {
                     <span className="mini-plant">{STAGE_DISPLAY[company.growth_stage]}</span>
                     <div className="row-main">
                       <div className="row-name">{company.company_name}</div>
-                      <div className="row-status">{company.status}</div>
+                      {/* 選考ステータスの横に、ひとことメモを同じ行で並べる */}
+                      <div className="row-status">
+                        {company.status}
+                        {company.short_memo && <span className="row-memo">{company.short_memo}</span>}
+                      </div>
                     </div>
                     <div className="row-stars">
                       {"★".repeat(company.interest_level)}
-                      {"☆".repeat(5 - company.interest_level)}
                     </div>
                     <button
                       className={company.is_favorite ? "fav-btn active" : "fav-btn"}
@@ -1606,11 +1735,14 @@ function App() {
                       <span className="mini-plant">{STAGE_DISPLAY[company.growth_stage]}</span>
                       <div className="row-main">
                         <div className="row-name">{company.company_name}</div>
-                        <div className="row-status">{company.status}</div>
+                        {/* 選考ステータスの横に、ひとことメモを同じ行で並べる */}
+                        <div className="row-status">
+                          {company.status}
+                          {company.short_memo && <span className="row-memo">{company.short_memo}</span>}
+                        </div>
                       </div>
                       <div className="row-stars">
                         {"★".repeat(company.interest_level)}
-                        {"☆".repeat(5 - company.interest_level)}
                       </div>
                       <button
                         className={company.is_favorite ? "fav-btn active" : "fav-btn"}
@@ -1776,6 +1908,20 @@ function App() {
                     )}
                   </div>
                   <h1 className="page-title title-up">設定</h1>
+                </div>
+              </div>
+
+              <div className="section-label">アカウント</div>
+              <div className="settings-list">
+                <div className="settings-row" style={{ cursor: "default" }}>
+                  <span>メールアドレス</span>
+                  <span className="arrow" style={{ color: "var(--ink)" }}>
+                    {user?.primaryEmailAddress?.emailAddress}
+                  </span>
+                </div>
+                <div className="settings-row" onClick={() => signOut()}>
+                  <span>ログアウト</span>
+                  <span className="arrow">›</span>
                 </div>
               </div>
 

@@ -221,7 +221,7 @@ body {
 }
 
 .company-row {
-  display: flex;
+  display: flex;          /* 植物・企業名・★・ハートを横に並べる */
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
@@ -269,7 +269,9 @@ body {
 
 .row-stars {
   color: var(--terracotta);
-  font-size: 13px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  white-space: nowrap;
   flex-shrink: 0;
 }
 
@@ -328,6 +330,14 @@ body {
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
+  box-shadow: 0 4px 12px rgba(79, 122, 85, 0.25);
+}
+
+.submit-icon {
+  width: 14px;
+  height: 14px;
+  vertical-align: -2px;
+  margin-right: 4px;
 }
 
 .plant-submit-btn:hover {
@@ -815,14 +825,20 @@ body {
 }
 
 .add-btn {
+  flex-shrink: 0;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
   background: var(--btn-bg);
   color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 8px 14px;
+  border-radius: 999px; /* 両端を完全に丸くする（ピル型） */
   border: none;
-  border-radius: 12px;
-  padding: 10px 16px;
-  font-size: 13px;
   cursor: pointer;
-  flex-shrink: 0;
+  box-shadow: 0 3px 8px rgba(79, 122, 85, 0.25);
 }
 
 /* ---------- ＋植える画面共通の「戻る」ヘッダー ---------- */
@@ -1167,7 +1183,12 @@ body {
 }
 
 .mini-add-btn:hover {
-  background: var(--bg);
+  background: var(--btn-bg-hover);
+}
+
+.add-btn svg {
+  width: 13px;
+  height: 13px;
 }
 
 .honne-box {
@@ -1605,4 +1626,158 @@ body {
 .nav-item.active {
   color: var(--moss-deep);
   font-weight: 700;
+}
+
+/* ---------- PC表示：スマホサイズの枠で表示する（モックアップ準拠） ----------
+   画面幅が広い時だけ、.page をスマホサイズのカードにして、中身は枠の内側でスクロールさせる。
+   スマホ（幅600px未満）では、ここは一切効かない */
+:root {
+  --desk-bg: #D9DED6;                       /* 枠の外側（机）の色 */
+  --frame-shadow: rgba(38, 59, 51, 0.25);   /* カードの影 */
+}
+
+body.dark {
+  --desk-bg: #171B16;
+  --frame-shadow: rgba(0, 0, 0, 0.5);
+}
+
+@media (min-width: 600px) {
+  html {
+    overflow-y: auto;
+  }
+
+  body {
+    background: var(--desk-bg);
+  }
+
+  #root {
+    min-height: 100svh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 12px;
+  }
+
+  .page {
+    width: 390px;
+    max-width: 100%;
+    height: min(844px, calc(100svh - 64px));
+    margin: 0;
+    padding: 24px 20px 0;
+    background: var(--bg);
+    border-radius: 28px;
+    box-shadow: 0 30px 60px var(--frame-shadow);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    scrollbar-width: none;
+  }
+
+  .page::-webkit-scrollbar {
+    display: none;
+  }
+
+  .page > * {
+    flex-shrink: 0;
+  }
+
+  .bottom-nav {
+    position: sticky;
+    bottom: 0;
+    left: auto;
+    transform: none;
+    width: auto;
+    max-width: none;
+    margin: auto -20px 0;
+    padding-bottom: 16px;
+    z-index: 10;
+  }
+
+  .detail-screen,
+  .plant-new-screen,
+  .desired-conditions-screen,
+  .confirm-delete-screen,
+  .about-screen {
+    padding-bottom: 24px;
+  }
+}
+
+/* ---------- ひとことメモ ---------- */
+.short-memo-box {
+  margin-top: 10px;
+  max-width: calc(100% - 40px);
+  padding: 6px 14px;
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.short-memo-text {
+  color: var(--ink);
+}
+
+.short-memo-placeholder {
+  color: var(--ink-soft);
+}
+
+.short-memo-edit-wrap {
+  margin-top: 10px;
+  width: calc(100% - 40px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border: 1px solid var(--moss);
+  border-radius: 999px;
+  background: var(--bg);
+}
+
+.short-memo-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 12.5px;
+  font-family: inherit;
+  color: var(--ink);
+}
+
+.short-memo-count {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  color: var(--ink-soft);
+}
+
+/* ステータスの横に並べるひとことメモ */
+.row-memo {
+  color: var(--moss-deep);
+  margin-left: 8px;
+}
+
+/* ---------- 企業一覧の行：1社2行に収める ---------- */
+.company-row .row-name {
+  font-size: 13.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.company-row .row-status {
+  font-size: 11px;
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 眠らせた企業は、少し控えめに見せる */
+.sleeping-list .row-name {
+  color: var(--ink-soft);
+  font-weight: 500;
+}
+
+.sleeping-list .mini-plant {
+  opacity: 0.5;
 }
