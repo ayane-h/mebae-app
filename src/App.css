@@ -1641,6 +1641,16 @@ body.dark {
   --frame-shadow: rgba(0, 0, 0, 0.5);
 }
 
+/* ---------- ログイン画面：Clerkのログインフォームを、画面の中央に置く ---------- */
+.login-screen {
+  min-height: 100svh;      /* 画面の高さいっぱいを使う */
+  display: flex;
+  align-items: center;     /* 上下の中央 */
+  justify-content: center; /* 左右の中央 */
+  padding: 24px 16px;
+  box-sizing: border-box;
+}
+
 @media (min-width: 600px) {
   html {
     overflow-y: auto;
@@ -1795,3 +1805,9 @@ body.dark {
     font-size: 16px;
   }
 }
+
+  /* PC表示では、外側（#root）がすでに中央寄せ・余白ありなので、高さの指定を外す */
+  .login-screen {
+    min-height: auto;
+    padding: 0;
+  }
