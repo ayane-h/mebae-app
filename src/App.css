@@ -1781,3 +1781,17 @@ body.dark {
 .sleeping-list .mini-plant {
   opacity: 0.5;
 }
+
+/* ---------- iPhone・iPadのSafariで、入力欄をタップした時に画面が拡大されるのを防ぐ ----------
+  Safariは、文字サイズが16px未満の入力欄にフォーカスすると自動でズームするため、
+   iPhone・iPadの時だけ入力欄の文字を16pxにする（PC・Androidの見た目は変わらない） */
+@supports (-webkit-touch-callout: none) {
+  .form-input,
+  .form-textarea,
+  .chip-edit-input,
+  .honne-edit,
+  .short-memo-input,
+  .reorder-edit-input {
+    font-size: 16px;
+  }
+}
