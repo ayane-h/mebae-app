@@ -1,4 +1,4 @@
-import { SignedIn, SignedOut, SignIn, useAuth, useUser, useClerk } from "@clerk/clerk-react";
+import { SignedIn, SignedOut, SignIn, useAuth, useUser, useClerk, useSignIn } from "@clerk/clerk-react";
 import { useState, useEffect } from "react";
 import './App.css';
 
@@ -23,6 +23,35 @@ const STAGE_LABEL = {
   flower: "花が咲いた",
 };
 
+// AI照合が失敗した時に、画面に出す案内（Workerが返す code ごと）
+// demo_limit だけは回数を差し込むので、画面側で文言を作る
+const REMATCH_ERRORS = {
+  ai_busy: {
+    title: "AIが混み合っているようです",
+    text: "少し時間をおいて、もう一度お試しください。",
+  },
+  ai_quota: {
+    title: "AIの利用回数が上限に達しました",
+    text: "しばらく時間をおいてから、もう一度お試しください。",
+  },
+  ai_failed: {
+    title: "AIの照合がうまくいきませんでした",
+    text: "もう一度お試しください。",
+  },
+  network: {
+    title: "通信がうまくいきませんでした",
+    text: "電波の良いところで、もう一度お試しください。",
+  },
+  no_conditions: {
+    title: "希望条件がまだ登録されていません",
+    text: "照らし合わせる条件を、先に登録してください。",
+  },
+  no_job_text: {
+    title: "求人票の本文がまだありません",
+    text: "下の「求人票の本文」に貼り付けてから、もう一度お試しください。",
+  },
+};
+
 // ひとことメモの最大文字数（バックエンドの SHORT_MEMO_MAX と同じ値にしておく）
 const SHORT_MEMO_MAX = 10;
 
@@ -31,6 +60,13 @@ function App() {
   const { getToken, isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();       // ログイン中の本人の情報（メールアドレスなど）
   const { signOut } = useClerk();   // ログアウトを実行する関数
+  const { isLoaded: signInLoaded, signIn, setActive } = useSignIn(); // デモで試す時に、合言葉でログインするための部品
+
+  // ログイン中の人の情報（デモかどうか・デモのAI照合の残り回数）
+  const [me, setMe] = useState({ isDemo: false, rematchRemaining: null, rematchLimit: 3 });
+  const [demoStarting, setDemoStarting] = useState(false); // デモの庭を準備中かどうか
+  const [demoError, setDemoError] = useState("");          // デモの準備に失敗した時のメッセージ
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false); // ログアウトの確認を表示中かどうか
 
   const [companies, setCompanies] = useState([]);
 
@@ -57,6 +93,7 @@ function App() {
   const [requirementMatches, setRequirementMatches] = useState([]);
   const [aiSuggestions, setAiSuggestions] = useState([]); // AIからの選考メモ提案（未採用のもの）
   const [isRematching, setIsRematching] = useState(false);
+  const [rematchError, setRematchError] = useState(null); // AI照合が失敗した時の理由（{ code, message }）。nullなら表示しない
   const [records, setRecords] = useState([]); // 記録ログの一覧（全企業分）
   const [companyRecords, setCompanyRecords] = useState([]); // 選択中の企業のタイムライン
   const [showAllRecords, setShowAllRecords] = useState(false); // タイムラインを全件表示するかどうか
@@ -130,6 +167,45 @@ function App() {
     });
   };
 
+  // ログイン中の人の情報を取得する（デモかどうか・AI照合の残り回数）
+  const fetchMe = async () => {
+    const data = await apiGetJson("/me");
+    if (data) {
+      setMe({
+        isDemo: data.is_demo,
+        rematchRemaining: data.rematch_remaining,
+        rematchLimit: data.rematch_limit,
+      });
+    }
+  };
+
+  // 「🌱 デモで試してみる」：Workerにデモの庭を作ってもらい、返ってきた合言葉でそのままログインする
+  // （このAPIはログイン前に呼ぶので、トークンを添えない普通の fetch を使う）
+  const startDemo = async () => {
+    if (!signInLoaded || demoStarting) return;
+    setDemoStarting(true);
+    setDemoError("");
+    try {
+      const res = await fetch(`${API_BASE}/demo/start`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ticket) {
+        setDemoError(data.error || "デモの準備に失敗しました。時間をおいてお試しください");
+        return;
+      }
+      const attempt = await signIn.create({ strategy: "ticket", ticket: data.ticket });
+      if (attempt.status === "complete") {
+        await setActive({ session: attempt.createdSessionId });
+      } else {
+        setDemoError("デモへのログインに失敗しました。もう一度お試しください");
+      }
+    } catch (err) {
+      console.error("デモの開始に失敗しました:", err);
+      setDemoError("デモの準備に失敗しました。時間をおいてお試しください");
+    } finally {
+      setDemoStarting(false);
+    }
+  };
+
   const fetchRecords = async () => {
     const data = await apiGetJson("/records");
     if (data) setRecords(data);
@@ -158,6 +234,7 @@ function App() {
     setEditingImpressionId(null);
     setEditingHonne(false);
     setEditingShortMemo(false);
+    setRematchError(null);
     setAddingMemo(false);
     setEditingMemoId(null);
     setScreen("detail");
@@ -444,6 +521,7 @@ function App() {
   const rematch = async (targetCompany) => {
     const company = targetCompany || selectedCompany;
     setIsRematching(true);
+    setRematchError(null);
 
     try {
       const body = JSON.stringify({ company_id: company.id });
@@ -456,16 +534,22 @@ function App() {
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        alert(err.error || "照合に失敗しました");
+        const err = await res.json().catch(() => ({}));
+        if (err.code === "demo_limit") fetchMe(); // デモの上限に達していたら、残り回数の表示を最新にする
+        setRematchError({ code: err.code || "ai_failed", message: err.error });
         return;
       }
 
+      fetchMe(); // デモの人の残り回数を最新にする
       await fetchRequirementMatches(company.id);
       fetchAiSuggestions(company.id);
       fetchCompanies();
       fetchCompanyRecords(company.id);
       fetchRecords();
+    } catch (err) {
+      // Workerまで届かなかった（通信が切れた など）
+      console.error("AI照合の通信に失敗しました:", err);
+      setRematchError({ code: "network" });
     } finally {
       setIsRematching(false);
     }
@@ -647,6 +731,7 @@ function App() {
   useEffect(() => {
     if (isLoaded && isSignedIn) {
       fetchCompanies();
+      fetchMe();
     }
   }, [isLoaded, isSignedIn]);
 
@@ -665,6 +750,8 @@ function App() {
       setAiSuggestions([]);
       setDesiredConditions([]);
       setPostPlantCompany(null);
+      setMe({ isDemo: false, rematchRemaining: null, rematchLimit: 3 });
+      setLogoutConfirmOpen(false);
       setScreen(null);
       setActiveTab("home");
     }
@@ -760,6 +847,19 @@ function App() {
   });
   const stageTotal = companies.length || 1;
 
+  // AI照合の失敗の案内（コードに対応する文言を選ぶ。知らないコードの時は、Workerのメッセージをそのまま使う）
+  const rematchErrorInfo = !rematchError
+    ? null
+    : rematchError.code === "demo_limit"
+      ? {
+          title: `デモでのAI照合は${me.rematchLimit}回までです`,
+          text: "見本データの照合結果や、ほかの機能もぜひ触ってみてください。",
+        }
+      : REMATCH_ERRORS[rematchError.code] || {
+          title: rematchError.message || "照合に失敗しました",
+          text: "もう一度お試しください。",
+        };
+
   const visibleRecords = showAllRecords ? companyRecords : companyRecords.slice(0, 2);
 
   // ホームの「最近、気持ちが動いた企業」用に、最新の記録1件から企業を割り出す
@@ -851,7 +951,30 @@ function App() {
     <>
     <SignedOut>
       <div className="login-screen">
-        <SignIn />
+        <div className="login-inner">
+          <div className="login-hero">
+            <span className="login-emoji">🌱</span>
+            <p className="login-app-name">めばえ</p>
+            <p className="login-tagline">気になる会社を育てる、転職記録アプリ</p>
+          </div>
+
+          <button className="demo-btn" onClick={startDemo} disabled={demoStarting || !signInLoaded}>
+            {demoStarting ? (
+              <>
+                <span className="spinner"></span>
+                デモの庭を準備しています…
+              </>
+            ) : (
+              "🌱 デモで試してみる"
+            )}
+          </button>
+          <p className="demo-note">登録なしで、見本データ入りの庭を触れます</p>
+          {demoError && <p className="demo-error">{demoError}</p>}
+
+          <div className="login-divider"><span>または、アカウントでログイン</span></div>
+
+          <SignIn />
+        </div>
       </div>
     </SignedOut>
 
@@ -967,8 +1090,14 @@ function App() {
                     ))}
                   </tbody>
                 </table>
-                <button className="rematch-btn" onClick={saveJobTextAndRematch} disabled={isRematching}>
-                  {isRematching ? (
+                <button
+                  className="rematch-btn"
+                  onClick={saveJobTextAndRematch}
+                  disabled={isRematching || (me.isDemo && me.rematchRemaining === 0)}
+                >
+                  {me.isDemo && me.rematchRemaining === 0 && !isRematching ? (
+                    "デモでのAI照合は上限に達しました"
+                  ) : isRematching ? (
                     <>
                       <span className="spinner"></span>
                       照合中...
@@ -979,10 +1108,43 @@ function App() {
                     "AIにもう一度照らし合わせてもらう"
                   )}
                 </button>
+                {me.isDemo && !isRematching && (
+                  <p className="demo-limit-note">
+                    AI照合（デモでは{me.rematchLimit}回まで・残り{me.rematchRemaining ?? 0}回）
+                  </p>
+                )}
                 {isRematching && (
                   <p className="rematch-hint">
                     求人票を読んで、選考フローや質問の候補もまとめて考えています
                   </p>
+                )}
+                {rematchErrorInfo && !isRematching && (
+                  <div className="rematch-error">
+                    <div className="rematch-error-body">
+                      <p className="rematch-error-title">{rematchErrorInfo.title}</p>
+                      <p className="rematch-error-text">{rematchErrorInfo.text}</p>
+                      {rematchError.code === "no_conditions" && (
+                        <button
+                          className="rematch-error-action"
+                          onClick={() => {
+                            fetchDesiredConditions();
+                            setScreen("desired-conditions");
+                          }}
+                        >
+                          希望条件を登録する →
+                        </button>
+                      )}
+                      {rematchError.code === "no_job_text" && (
+                        <button
+                          className="rematch-error-action"
+                          onClick={() => setShowJobTextEditor(true)}
+                        >
+                          求人票の本文を貼り付ける ↓
+                        </button>
+                      )}
+                    </div>
+                    <span className="rematch-error-close" onClick={() => setRematchError(null)}>×</span>
+                  </div>
                 )}
 
                 <div className="job-text-block">
@@ -1280,6 +1442,12 @@ function App() {
             <span className="screen-title">新しい企業を植える</span>
           </div>
 
+          {me.isDemo && (
+            <div className="demo-banner">
+              🌱 デモで体験中です。個人情報は入力しないでください
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="plant-form">
             <div className="form-block">
               <label>会社名 <span className="required-label">必須</span></label>
@@ -1364,7 +1532,8 @@ function App() {
         // ============ 希望条件の管理画面 ============
         <div className="desired-conditions-screen">
           <div className="screen-header">
-            <button className="back-btn" onClick={() => setScreen(null)}>←</button>
+            {/* 企業詳細の「希望条件を登録する」から来た時は、企業詳細に戻る */}
+            <button className="back-btn" onClick={() => setScreen(selectedCompany ? "detail" : null)}>←</button>
             <span className="screen-title">希望条件</span>
           </div>
 
@@ -1534,6 +1703,11 @@ function App() {
         <>
           {activeTab === "home" && (
             <div className="home-screen">
+              {me.isDemo && (
+                <div className="demo-banner">
+                  🌱 デモで体験中です。個人情報は入力しないでください
+                </div>
+              )}
               <div className="page-header">
                 <div>
                   <p className="eyebrow">おかえりなさい</p>
@@ -1914,13 +2088,13 @@ function App() {
               <div className="section-label">アカウント</div>
               <div className="settings-list">
                 <div className="settings-row" style={{ cursor: "default" }}>
-                  <span>メールアドレス</span>
+                  <span>{me.isDemo ? "アカウント" : "メールアドレス"}</span>
                   <span className="arrow" style={{ color: "var(--ink)" }}>
-                    {user?.primaryEmailAddress?.emailAddress}
+                    {me.isDemo ? "デモアカウント" : user?.primaryEmailAddress?.emailAddress}
                   </span>
                 </div>
-                <div className="settings-row" onClick={() => signOut()}>
-                  <span>ログアウト</span>
+                <div className="settings-row" onClick={() => setLogoutConfirmOpen(true)}>
+                  <span>{me.isDemo ? "デモを終了する" : "ログアウト"}</span>
                   <span className="arrow">›</span>
                 </div>
               </div>
@@ -2018,6 +2192,34 @@ function App() {
         </>
       )}
     </div>
+
+    {/* ============ ログアウトの確認（画面の中央に重ねて表示） ============ */}
+    {logoutConfirmOpen && (
+      <div className="modal-overlay" onClick={() => setLogoutConfirmOpen(false)}>
+        <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+          <p className="modal-title">{me.isDemo ? "デモを終了しますか？" : "ログアウトしますか？"}</p>
+          <p className="modal-text">
+            {me.isDemo
+              ? "このデモの庭には戻れなくなります。もう一度「デモで試してみる」を押すと、新しい庭で体験できます。"
+              : "記録したデータは消えません。次に使う時は、もう一度ログインしてください。"}
+          </p>
+          <div className="modal-buttons">
+            <button className="modal-cancel-btn" onClick={() => setLogoutConfirmOpen(false)}>
+              キャンセル
+            </button>
+            <button
+              className="modal-ok-btn"
+              onClick={() => {
+                setLogoutConfirmOpen(false);
+                signOut();
+              }}
+            >
+              {me.isDemo ? "終了する" : "ログアウト"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </SignedIn>
   </>
   );
