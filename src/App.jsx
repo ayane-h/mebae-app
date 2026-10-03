@@ -58,6 +58,16 @@ const SAMPLE_JOB = {
 【選考フロー】書類選考 → 一次面接 → 最終面接 → 内定`,
 };
 
+// 入力欄でEnterを押したら、入力を確定する（欄からフォーカスを外す → onBlur の保存処理が動く）。
+// 日本語入力で「変換を確定するEnter」の時は、何もしない（これが無いと、変換を確定しただけで欄が閉じてしまう）
+//   isComposing … 変換の途中かどうか
+//   keyCode 229 … 変換中のキー操作を表す番号（Safariなど、isComposing だけでは判定できないブラウザのため）
+const blurOnEnter = (e) => {
+  if (e.key !== "Enter") return;
+  if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+  e.target.blur();
+};
+
 // ひとことメモの最大文字数（バックエンドの SHORT_MEMO_MAX と同じ値にしておく）
 const SHORT_MEMO_MAX = 10;
 
@@ -1058,10 +1068,7 @@ function App() {
                   value={shortMemoDraft}
                   onChange={(e) => setShortMemoDraft(e.target.value)}
                   onBlur={saveShortMemo}
-                  onKeyDown={(e) => {
-                    // 日本語の変換確定のEnterでは閉じないようにする
-                    if (e.key === "Enter" && !e.nativeEvent.isComposing) e.target.blur();
-                  }}
+                  onKeyDown={blurOnEnter}
                   placeholder="ひとことメモ"
                 />
                 <span className="short-memo-count">
@@ -1220,7 +1227,7 @@ function App() {
                         value={editingImpressionValue}
                         onChange={(e) => setEditingImpressionValue(e.target.value)}
                         onBlur={commitEditImpression}
-                        onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
+                        onKeyDown={blurOnEnter}
                       />
                     ) : (
                       <div className="chip removable" key={imp.id} onClick={() => startEditImpression(imp)}>
@@ -1244,7 +1251,7 @@ function App() {
                       value={newChipValue}
                       onChange={(e) => setNewChipValue(e.target.value)}
                       onBlur={commitAddImpression}
-                      onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
+                      onKeyDown={blurOnEnter}
                     />
                   ) : (
                     <div className="chip add-chip" onClick={() => startAddImpression("good")}>＋ 追加</div>
@@ -1262,7 +1269,7 @@ function App() {
                         value={editingImpressionValue}
                         onChange={(e) => setEditingImpressionValue(e.target.value)}
                         onBlur={commitEditImpression}
-                        onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
+                        onKeyDown={blurOnEnter}
                       />
                     ) : (
                       <div className="chip removable" key={imp.id} onClick={() => startEditImpression(imp)}>
@@ -1286,7 +1293,7 @@ function App() {
                       value={newChipValue}
                       onChange={(e) => setNewChipValue(e.target.value)}
                       onBlur={commitAddImpression}
-                      onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
+                      onKeyDown={blurOnEnter}
                     />
                   ) : (
                     <div className="chip add-chip" onClick={() => startAddImpression("concern")}>＋ 追加</div>
@@ -1337,7 +1344,7 @@ function App() {
                     value={selectionFlowDraft}
                     onChange={(e) => setSelectionFlowDraft(e.target.value)}
                     onBlur={saveSelectionFlow}
-                    onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
+                    onKeyDown={blurOnEnter}
                   />
                 ) : (
                   <div className="selection-flow-box" onClick={startEditSelectionFlow}>
@@ -1376,7 +1383,7 @@ function App() {
                         value={editingMemoValue}
                         onChange={(e) => setEditingMemoValue(e.target.value)}
                         onBlur={commitEditMemo}
-                        onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
+                        onKeyDown={blurOnEnter}
                       />
                     ) : (
                       <div className="chip removable" key={memo.id} onClick={() => startEditMemo(memo)}>
@@ -1400,7 +1407,7 @@ function App() {
                       value={newMemoValue}
                       onChange={(e) => setNewMemoValue(e.target.value)}
                       onBlur={commitAddMemo}
-                      onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
+                      onKeyDown={blurOnEnter}
                     />
                   ) : (
                     <div className="chip add-chip" onClick={startAddMemo}>＋ 追加</div>
@@ -1635,7 +1642,7 @@ function App() {
                       value={editingConditionValue}
                       onChange={(e) => setEditingConditionValue(e.target.value)}
                       onBlur={commitEditCondition}
-                      onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
+                      onKeyDown={blurOnEnter}
                     />
                   ) : (
                     <span className="reorder-label" onClick={() => startEditCondition(c)}>
@@ -1660,7 +1667,7 @@ function App() {
                   value={newConditionValue}
                   onChange={(e) => setNewConditionValue(e.target.value)}
                   onBlur={commitAddCondition}
-                  onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
+                  onKeyDown={blurOnEnter}
                 />
               ) : (
                 <div className="chip add-chip" onClick={startAddCondition}>＋ 追加</div>

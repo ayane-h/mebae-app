@@ -6,7 +6,7 @@
 // 画像はすべて、鉢・植物を同じ 512×768px のキャンバスに描いてあるので、
 // 同じ大きさで重ねるだけで、植物が鉢の土の位置にぴったり合う。
 // ============================================================
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import floorImg from "./assets/garden/floor.png";
 import potTerracotta from "./assets/garden/pot-terracotta.png";
 import potDark from "./assets/garden/pot-dark.png";
@@ -124,22 +124,27 @@ export function SproutIcon({ size }) {
 
 // ---- 庭 ----
 // 床の画像(512×512px)の上での、鉢を置く場所（鉢の底の中心の座標）。
-// 奥の植物が手前の花で隠れにくいよう、少しずつ横にずらしてある。企業は登録した順に、この順番で置かれる
+// 奥の植物が手前の花で隠れにくいよう、列ごとに横へずらしつつ、床の中心線（x=255）で左右対称にしてある。
+// 企業は登録した順に、この順番で置かれる（手前の中央 → 奥の中央 → 左右のペア、の順でバランスよく埋まる）
 const SLOTS = [
-  { x: 200, y: 230 },
-  { x: 338, y: 240 },
-  { x: 258, y: 372 },
-  { x: 92, y: 264 },
-  { x: 440, y: 268 },
-  { x: 160, y: 328 },
-  { x: 365, y: 318 },
-  { x: 258, y: 188 },
+  { x: 255, y: 372 }, // 手前の中央
+  { x: 255, y: 188 }, // 奥の中央
+  { x: 183, y: 239 }, // 奥寄りの左
+  { x: 328, y: 239 }, // 奥寄りの右
+  { x: 83, y: 266 },  // 左端
+  { x: 427, y: 266 }, // 右端
+  { x: 147, y: 323 }, // 手前寄りの左
+  { x: 363, y: 323 }, // 手前寄りの右
 ];
 
 const FLOOR_SIZE = 512;   // 床の画像の横幅(px)
-const STAGE_HEIGHT = 420; // 庭として表示する高さ（床の画像の下の余白は切り落とす）
-const POT_SCALE = 0.24;   // 床に対する、鉢＋植物の画像の大きさ
+const STAGE_TOP = 58;     // 床の上に足す、空の余白（一番奥の花の上に、吹き出しを出す場所を作るため）
+const STAGE_HEIGHT = 478; // 庭として表示する高さ（空の余白 + 床。床の画像の下の余白は切り落とす）
+const POT_SCALE = 0.23;   // 床に対する、鉢＋植物の画像の大きさ
 const POT_ANCHOR = { x: 256, y: 730 }; // 鉢＋植物の画像(512×768px)の中での、鉢の底の中心
+
+// 鉢＋植物の画像(512×768px)の中での、植物のてっぺんの高さ（段階ごと）。吹き出しを、この少し上に出す
+const PLANT_TOP = { seed: 432, sprout: 398, bud: 170, flower: 54 };
 
 // 今の時刻から、空の色の種類を決める（朝・昼・夕方・夜）
 function skyPeriodOf(date) {
@@ -163,6 +168,19 @@ export function Garden({ companies, onSelect, period, showTimeSlider = false }) 
   // スライダーで選んだ時間帯（null の間は、今の時刻のまま）
   const [manualPeriod, setManualPeriod] = useState(null);
   const sky = manualPeriod || period || skyPeriodOf(new Date());
+
+  // タップして吹き出しを出している企業のid（null = どれも出していない）
+  const [selectedId, setSelectedId] = useState(null);
+
+  // 鉢をタップした時：1回目は吹き出しを出す。吹き出しが出ている鉢をもう1回タップしたら、企業詳細を開く
+  const handleTapPot = (company) => {
+    if (selectedId === company.id) {
+      setSelectedId(null);
+      onSelect(company);
+    } else {
+      setSelectedId(company.id);
+    }
+  };
 
   // 前に見た時から育った鉢・新しく植えた鉢を、ぽんと弾ませる
   const [grewIds, setGrewIds] = useState([]);
@@ -198,6 +216,60 @@ export function Garden({ companies, onSelect, period, showTimeSlider = false }) 
     return () => clearTimeout(timer);
   }, [stageSignature]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ---- 庭が2つ以上ある時の、切り替え ----
+  const scrollRef = useRef(null);              // 横にスクロールする入れ物
+  const [pageIndex, setPageIndex] = useState(0); // 今見ている庭（0から数える）
+  const dragRef = useRef({ active: false, startX: 0, startScroll: 0, moved: false });
+
+  // 指定した庭まで、なめらかに移動する
+  const goToPage = (index) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ left: index * el.clientWidth, behavior: "smooth" });
+  };
+
+  // スクロールした位置から、今どの庭を見ているかを計算する
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el || el.clientWidth === 0) return;
+    setPageIndex(Math.round(el.scrollLeft / el.clientWidth));
+  };
+
+  // マウスでつかんで横に動かす（スマホの指でのスワイプは、ブラウザが元々やってくれるので、マウスの時だけ自前で動かす）
+  const handlePointerDown = (e) => {
+    if (e.pointerType !== "mouse") return;
+    const el = scrollRef.current;
+    dragRef.current = { active: true, startX: e.clientX, startScroll: el.scrollLeft, moved: false };
+  };
+
+  const handlePointerMove = (e) => {
+    const drag = dragRef.current;
+    if (!drag.active) return;
+    const dx = e.clientX - drag.startX;
+    if (Math.abs(dx) > 6 && !drag.moved) {
+      drag.moved = true;
+      scrollRef.current.classList.add("dragging"); // つかんでいる間は、ぴたっと止まる動きを切る
+    }
+    if (drag.moved) scrollRef.current.scrollLeft = drag.startScroll - dx;
+  };
+
+  const handlePointerEnd = () => {
+    const drag = dragRef.current;
+    if (!drag.active) return;
+    drag.active = false;
+    const el = scrollRef.current;
+    el.classList.remove("dragging");
+    if (drag.moved) goToPage(Math.round(el.scrollLeft / el.clientWidth)); // 近い方の庭で止める
+  };
+
+  // つかんで動かした直後のクリックは、鉢のタップとして扱わない
+  const handleClickCapture = (e) => {
+    if (dragRef.current.moved) {
+      e.stopPropagation();
+      dragRef.current.moved = false;
+    }
+  };
+
   // 登録した順（idの小さい順）に並べる。新しい企業を植えても、今までの鉢の位置は変わらない
   const ordered = [...companies].sort((a, b) => a.id - b.id);
 
@@ -210,20 +282,40 @@ export function Garden({ companies, onSelect, period, showTimeSlider = false }) 
 
   return (
     <div className={`garden-view garden-sky-${sky}`}>
-      <div className="garden-scroll">
+      <div
+        className="garden-scroll"
+        ref={scrollRef}
+        onScroll={handleScroll}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerEnd}
+        onPointerLeave={handlePointerEnd}
+        onClickCapture={handleClickCapture}
+      >
         {pages.map((page, pageIndex) => (
           <div className="garden-page" key={pageIndex}>
-            <div className="garden-stage">
-              <img className="garden-floor" src={floorImg} alt="" draggable="false" />
+            {/* 鉢以外の場所をタップしたら、吹き出しを閉じる */}
+            <div className="garden-stage" onClick={() => setSelectedId(null)}>
+              <img
+                className="garden-floor"
+                src={floorImg}
+                alt=""
+                draggable="false"
+                style={{ top: `${(STAGE_TOP / STAGE_HEIGHT) * 100}%` }}
+              />
               {page.map((company, i) => {
                 const slot = SLOTS[i];
                 return (
                   <div
-                    className={grewIds.includes(company.id) ? "garden-slot just-grew" : "garden-slot"}
+                    className={[
+                      "garden-slot",
+                      grewIds.includes(company.id) ? "just-grew" : "",
+                      selectedId === company.id ? "selected" : "",
+                    ].join(" ").trim()}
                     key={company.id}
                     style={{
                       left: `${((slot.x - POT_ANCHOR.x * POT_SCALE) / FLOOR_SIZE) * 100}%`,
-                      top: `${((slot.y - POT_ANCHOR.y * POT_SCALE) / STAGE_HEIGHT) * 100}%`,
+                      top: `${((slot.y + STAGE_TOP - POT_ANCHOR.y * POT_SCALE) / STAGE_HEIGHT) * 100}%`,
                       width: `${POT_SCALE * 100}%`,
                       zIndex: slot.y, // 手前（下）にある鉢ほど、上に重ねて描く
                     }}
@@ -232,11 +324,44 @@ export function Garden({ companies, onSelect, period, showTimeSlider = false }) 
                     {/* タップできる範囲は、鉢のまわりだけにする（画像の透明な部分で、隣の鉢のタップを邪魔しないように） */}
                     <button
                       className="garden-slot-hit"
-                      onClick={() => onSelect(company)}
+                      onClick={(e) => {
+                        e.stopPropagation(); // 庭の「吹き出しを閉じる」まで伝わらないようにする
+                        handleTapPot(company);
+                      }}
                       title={company.company_name}
                       aria-label={company.company_name}
                     />
                   </div>
+                );
+              })}
+              {/* 吹き出し：タップした鉢の、植物のすぐ上に出す */}
+              {page.map((company, i) => {
+                if (company.id !== selectedId) return null;
+                const slot = SLOTS[i];
+                const plantTop = PLANT_TOP[company.growth_stage] || PLANT_TOP.seed;
+                // 吹き出しの下端を合わせる高さ（植物のてっぺん）
+                const tipY = slot.y + STAGE_TOP - (POT_ANCHOR.y - plantTop) * POT_SCALE;
+                // 左右の端の鉢でも、吹き出しが庭からはみ出さないよう、横の位置を内側に寄せる
+                const leftPercent = Math.min(72, Math.max(28, (slot.x / FLOOR_SIZE) * 100));
+                return (
+                  <button
+                    className="garden-balloon"
+                    key={`balloon-${company.id}`}
+                    // top：植物のてっぺんに合わせる。ただし、庭の上端からはみ出さないよう、最低でも56pxは下げる
+                    style={{ left: `${leftPercent}%`, top: `max(${(tipY / STAGE_HEIGHT) * 100}%, 56px)` }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedId(null);
+                      onSelect(company);
+                    }}
+                  >
+                    <span className="garden-balloon-name">{company.company_name}</span>
+                    <span className="garden-balloon-sub">
+                      {company.status}
+                      {company.short_memo ? `・${company.short_memo}` : ""}
+                      <span className="garden-balloon-arrow">›</span>
+                    </span>
+                  </button>
                 );
               })}
               {page.length === 0 && (
@@ -268,8 +393,36 @@ export function Garden({ companies, onSelect, period, showTimeSlider = false }) 
           <span className="sky-slider-label">{SKY_LABEL[sky]}</span>
         </div>
       )}
+      {/* 庭が2つ以上ある時：矢印と点で、ほかの庭に切り替える（スマホは横スワイプ、PCはドラッグでも切り替えられる） */}
       {pages.length > 1 && (
-        <p className="garden-hint">← 横にスワイプすると、ほかの庭も見られます（全{pages.length}つ） →</p>
+        <div className="garden-pager">
+          <button
+            className="garden-pager-arrow"
+            onClick={() => goToPage(pageIndex - 1)}
+            disabled={pageIndex === 0}
+            aria-label="前の庭"
+          >
+            ‹
+          </button>
+          <div className="garden-pager-dots">
+            {pages.map((_, i) => (
+              <button
+                key={i}
+                className={i === pageIndex ? "garden-pager-dot active" : "garden-pager-dot"}
+                onClick={() => goToPage(i)}
+                aria-label={`${i + 1}つ目の庭`}
+              />
+            ))}
+          </div>
+          <button
+            className="garden-pager-arrow"
+            onClick={() => goToPage(pageIndex + 1)}
+            disabled={pageIndex === pages.length - 1}
+            aria-label="次の庭"
+          >
+            ›
+          </button>
+        </div>
       )}
     </div>
   );
