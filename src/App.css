@@ -1651,6 +1651,129 @@ body.dark {
   box-sizing: border-box;
 }
 
+/* ---------- 庭のイラスト ---------- */
+.garden-view {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 10px 8px 8px;
+  margin-bottom: 18px;
+}
+
+/* 庭が2つ以上ある時は、横にスワイプして切り替える */
+.garden-scroll {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.garden-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.garden-page {
+  flex: 0 0 100%;
+  scroll-snap-align: center;
+}
+
+/* 床と鉢を重ねる土台。中の位置・大きさは、すべてこの箱に対する％で指定している */
+.garden-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 512 / 420;
+  overflow: hidden;
+}
+
+.garden-floor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  user-select: none;
+}
+
+.garden-slot {
+  position: absolute;
+  pointer-events: none; /* 画像の透明な部分ではタップを受けない（タップは下の .garden-slot-hit だけ） */
+}
+
+.garden-slot-hit {
+  position: absolute;
+  left: 20%;
+  top: 45%;
+  width: 60%;
+  height: 54%;
+  border: none;
+  background: none;
+  padding: 0;
+  border-radius: 12px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.garden-empty {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 58%;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+.garden-hint {
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--ink-soft);
+  margin: 4px 0 0;
+}
+
+/* ---------- 鉢＋植物 ---------- */
+.potted-plant {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+.potted-plant img {
+  display: block;
+  width: 100%;
+  user-select: none;
+}
+
+.potted-plant-plant {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+/* ---------- 植物だけのアイコン ---------- */
+.plant-icon {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.plant-icon img {
+  position: absolute;
+  max-width: none;
+  user-select: none;
+}
+
+/* 企業詳細：絵文字からイラストに変えたので、鉢植えを中央に置く */
+.detail-plant .potted-plant {
+  margin: 0 auto;
+}
+
+/* ホームのお気に入りカード：植物のアイコンを中央に置く */
+.plant-card-icon {
+  display: flex;
+  justify-content: center;
+}
+
 @media (min-width: 600px) {
   html {
     overflow-y: auto;
@@ -2047,4 +2170,67 @@ body.dark {
   color: var(--ink-soft);
   cursor: pointer;
   padding: 2px;
+}
+
+/* ---------- ＋植える画面：見本の求人票ボタン・照らし合わせる希望条件 ---------- */
+.form-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.form-label-row label {
+  margin-bottom: 0;
+}
+
+.sample-btn {
+  background: none;
+  border: 1px solid var(--moss);
+  color: var(--moss-deep);
+  border-radius: 999px;
+  padding: 4px 11px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.plant-conditions {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border-radius: 12px;
+}
+
+.plant-conditions-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  margin-bottom: 8px;
+}
+
+.plant-conditions-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.plant-condition-chip {
+  font-size: 11.5px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+
+.plant-conditions-empty {
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  line-height: 1.6;
+  margin: 0;
 }

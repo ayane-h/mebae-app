@@ -1,19 +1,14 @@
 import { SignedIn, SignedOut, SignIn, useAuth, useUser, useClerk, useSignIn } from "@clerk/clerk-react";
 import { useState, useEffect } from "react";
 import './App.css';
+import { Garden, PottedPlant, PlantIcon } from "./Garden.jsx";
 
 // APIの場所。ローカルでは自分のPCで動かしているWorker。
 // Vercelなどで公開する時は、環境変数 VITE_API_BASE_URL に本番のWorkerのURLを入れて切り替える
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8787";
 
-// 成長段階 → 表示する内容、の対応表
-// 今は絵文字だが、後で画像やSVGに差し替える時はここだけ直せばよい
-const STAGE_DISPLAY = {
-  seed: "🌱",
-  sprout: "🌿",
-  bud: "🌸",
-  flower: "🌼",
-};
+// 成長段階ごとの鉢・植物のイラストは、Garden.jsx にまとめてある
+// （<Garden> 庭 ／ <PottedPlant> 鉢＋植物 ／ <PlantIcon> 植物だけの小さいアイコン）
 
 // 成長段階 → 表示するラベル文言、の対応表
 const STAGE_LABEL = {
@@ -50,6 +45,17 @@ const REMATCH_ERRORS = {
     title: "求人票の本文がまだありません",
     text: "下の「求人票の本文」に貼り付けてから、もう一度お試しください。",
   },
+};
+
+// デモの人が「見本の求人票を入れてみる」を押した時に入る、架空の求人票
+// （デモの希望条件に対して、○・△・× がばらけるような内容にしてある）
+const SAMPLE_JOB = {
+  companyName: "株式会社コモレビ",
+  jobText: `【募集職種】フロントエンドエンジニア
+【仕事内容】自社で開発・運営している読書記録アプリの画面開発を担当します。React / TypeScriptを使用。デザイナーと相談しながら、使いやすい画面を作っていく仕事です。一部、バックエンド（API）の改修もお任せします。
+【働き方】週2日までリモート勤務可（試用期間の3か月間は出社）
+【休日】土日祝休み、夏季・年末年始休暇
+【選考フロー】書類選考 → 一次面接 → 最終面接 → 内定`,
 };
 
 // ひとことメモの最大文字数（バックエンドの SHORT_MEMO_MAX と同じ値にしておく）
@@ -135,6 +141,8 @@ function App() {
   const [draggingId, setDraggingId] = useState(null); // 今つかんでドラッグ中の希望条件のid
   const [editingConditionId, setEditingConditionId] = useState(null); // タップして編集中の希望条件のid
   const [editingConditionValue, setEditingConditionValue] = useState("");
+  // 希望条件の画面を閉じた時に、戻る画面（null = タブ表示 / "detail" = 企業詳細 / "plant-new" = ＋植える画面）
+  const [conditionsReturnTo, setConditionsReturnTo] = useState(null);
 
   // --- 【関数の準備】 ---
 
@@ -326,6 +334,19 @@ function App() {
   const fetchDesiredConditions = async () => {
     const data = await apiGetJson("/desired-conditions");
     if (data) setDesiredConditions(data);
+  };
+
+  // 希望条件の画面を開く。returnTo に、閉じた時に戻る画面を渡す
+  const openConditions = (returnTo = null) => {
+    fetchDesiredConditions();
+    setConditionsReturnTo(returnTo);
+    setScreen("desired-conditions");
+  };
+
+  // デモの人向け：見本の求人票を、入力欄に入れる（会社名が空の時は、会社名も入れる）
+  const fillSampleJob = () => {
+    if (!companyName.trim()) setCompanyName(SAMPLE_JOB.companyName);
+    setJobText(SAMPLE_JOB.jobText);
   };
 
   const startAddCondition = () => {
@@ -732,6 +753,7 @@ function App() {
     if (isLoaded && isSignedIn) {
       fetchCompanies();
       fetchMe();
+      fetchDesiredConditions(); // ＋植える画面で「照らし合わせる希望条件」を見せるために、先に取得しておく
     }
   }, [isLoaded, isSignedIn]);
 
@@ -1015,7 +1037,7 @@ function App() {
           </div>
 
           <div className="detail-plant">
-            <span className="detail-plant-icon">{STAGE_DISPLAY[selectedCompany.growth_stage]}</span>
+            <PottedPlant company={selectedCompany} width={120} />
             <p className="stage-caption">
               この会社について、{impressions.length + memos.length + (honne && honne.trim() ? 1 : 0)}つのことを知りました
             </p>
@@ -1126,10 +1148,7 @@ function App() {
                       {rematchError.code === "no_conditions" && (
                         <button
                           className="rematch-error-action"
-                          onClick={() => {
-                            fetchDesiredConditions();
-                            setScreen("desired-conditions");
-                          }}
+                          onClick={() => openConditions("detail")}
                         >
                           希望条件を登録する →
                         </button>
@@ -1469,7 +1488,14 @@ function App() {
               />
             </div>
             <div className="form-block">
-              <label>求人情報</label>
+              <div className="form-label-row">
+                <label>求人情報</label>
+                {me.isDemo && (
+                  <button type="button" className="sample-btn" onClick={fillSampleJob}>
+                    見本の求人票を入れてみる
+                  </button>
+                )}
+              </div>
               <textarea
                 className="form-textarea"
                 value={jobText}
@@ -1479,6 +1505,27 @@ function App() {
               <p className="form-hint">
                 Ctrl+Aで全選択すると他社の情報も混ざることがあります。求人本文だけを範囲選択してコピペしてください。
               </p>
+
+              {/* 求人票と照らし合わせる希望条件を、入力する前に見られるようにする */}
+              <div className="plant-conditions">
+                <div className="plant-conditions-head">
+                  <span>この希望条件と照らし合わせます</span>
+                  <span className="section-link" onClick={() => openConditions("plant-new")}>
+                    {desiredConditions.length > 0 ? "変更する" : "登録する"}
+                  </span>
+                </div>
+                {desiredConditions.length > 0 ? (
+                  <div className="plant-conditions-chips">
+                    {desiredConditions.map((c) => (
+                      <span className="plant-condition-chip" key={c.id}>{c.label}</span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="plant-conditions-empty">
+                    まだ登録されていません。登録しておくと、植えたあとにAIが求人票と照らし合わせます。
+                  </p>
+                )}
+              </div>
             </div>
 
             <div className="form-block">
@@ -1532,8 +1579,8 @@ function App() {
         // ============ 希望条件の管理画面 ============
         <div className="desired-conditions-screen">
           <div className="screen-header">
-            {/* 企業詳細の「希望条件を登録する」から来た時は、企業詳細に戻る */}
-            <button className="back-btn" onClick={() => setScreen(selectedCompany ? "detail" : null)}>←</button>
+            {/* 企業詳細や＋植える画面から来た時は、元の画面に戻る */}
+            <button className="back-btn" onClick={() => setScreen(conditionsReturnTo)}>←</button>
             <span className="screen-title">希望条件</span>
           </div>
 
@@ -1721,18 +1768,8 @@ function App() {
                 </button>
               </div>
 
-              <div className="mini-garden">
-                {companies.filter((c) => !c.is_sleeping).map((c) => (
-                  <span
-                    key={c.id}
-                    className="mini-garden-icon"
-                    onClick={() => openDetail(c)}
-                    title={c.company_name}
-                  >
-                    {STAGE_DISPLAY[c.growth_stage]}
-                  </span>
-                ))}
-              </div>
+              {/* 庭：眠らせていない企業の鉢植えを並べる。鉢をタップすると、その企業の詳細を開く */}
+              <Garden companies={companies.filter((c) => !c.is_sleeping)} onSelect={openDetail} />
 
               {latestRecordCompany && (
                 <>
@@ -1743,7 +1780,7 @@ function App() {
                     className="plant-row"
                     onClick={() => openDetail(latestRecordCompany)}
                   >
-                    <span className="stage-icon">{STAGE_DISPLAY[latestRecordCompany.growth_stage]}</span>
+                    <span className="mini-plant"><PlantIcon company={latestRecordCompany} size={30} /></span>
                     <div className="row-main">
                       <div className="row-name">{latestRecordCompany.company_name}</div>
                       <div className="row-status">
@@ -1781,7 +1818,7 @@ function App() {
                           </svg>
                         </button>
                         <span className="stage-label">{STAGE_LABEL[c.growth_stage]}</span>
-                        <div className="plant-card-icon">{STAGE_DISPLAY[c.growth_stage]}</div>
+                        <div className="plant-card-icon"><PlantIcon company={c} size={64} /></div>
                         <div className="name">{c.company_name}</div>
                         <div className="status">{c.status}</div>
                         <div className="heart-row">
@@ -1868,7 +1905,7 @@ function App() {
                     className="company-row"
                     onClick={() => openDetail(company)}
                   >
-                    <span className="mini-plant">{STAGE_DISPLAY[company.growth_stage]}</span>
+                    <span className="mini-plant"><PlantIcon company={company} size={30} /></span>
                     <div className="row-main">
                       <div className="row-name">{company.company_name}</div>
                       {/* 選考ステータスの横に、ひとことメモを同じ行で並べる */}
@@ -1906,7 +1943,7 @@ function App() {
                       className="company-row"
                       onClick={() => openDetail(company)}
                     >
-                      <span className="mini-plant">{STAGE_DISPLAY[company.growth_stage]}</span>
+                      <span className="mini-plant"><PlantIcon company={company} size={30} /></span>
                       <div className="row-main">
                         <div className="row-name">{company.company_name}</div>
                         {/* 選考ステータスの横に、ひとことメモを同じ行で並べる */}
@@ -2103,10 +2140,7 @@ function App() {
               <div className="settings-list">
                 <div
                   className="settings-row"
-                  onClick={() => {
-                    fetchDesiredConditions();
-                    setScreen("desired-conditions");
-                  }}
+                  onClick={() => openConditions(null)}
                 >
                   <span>希望条件</span>
                   <span className="arrow">›</span>
