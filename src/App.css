@@ -1652,12 +1652,87 @@ body.dark {
 }
 
 /* ---------- 庭のイラスト ---------- */
+/* 空の色を「色」として登録しておくと、時間帯を切り替えた時に、色がなめらかに変わる */
+@property --sky-top {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #D6E8EC;
+}
+
+@property --sky-bottom {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #F6F2E6;
+}
+
 .garden-view {
-  background: var(--paper);
+  /* 空の色（上 → 下）。時間帯ごとに、下の .garden-sky-◯◯ で上書きする */
+  --sky-top: #D6E8EC;
+  --sky-bottom: #F6F2E6;
+  --garden-text: var(--ink-soft);
+  background: linear-gradient(to bottom, var(--sky-top), var(--sky-bottom));
   border: 1px solid var(--line);
   border-radius: 16px;
   padding: 10px 8px 8px;
   margin-bottom: 18px;
+  position: relative;
+  isolation: isolate; /* 星のレイヤー（::before）を、空の上・庭の下に置くため */
+  overflow: hidden;
+  transition: --sky-top 0.8s ease, --sky-bottom 0.8s ease;
+}
+
+/* 夜の星。ふだんは透明にしておいて、夜だけ見せる */
+.garden-view::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.8s ease;
+  pointer-events: none;
+  background:
+    radial-gradient(1.5px 1.5px at 12% 14%, rgba(255, 255, 255, 0.9), transparent 60%),
+    radial-gradient(1.5px 1.5px at 30% 8%, rgba(255, 255, 255, 0.7), transparent 60%),
+    radial-gradient(1.5px 1.5px at 52% 16%, rgba(255, 255, 255, 0.85), transparent 60%),
+    radial-gradient(1.5px 1.5px at 71% 7%, rgba(255, 255, 255, 0.7), transparent 60%),
+    radial-gradient(1.5px 1.5px at 88% 18%, rgba(255, 255, 255, 0.9), transparent 60%),
+    radial-gradient(1.5px 1.5px at 8% 30%, rgba(255, 255, 255, 0.6), transparent 60%),
+    radial-gradient(1.5px 1.5px at 93% 34%, rgba(255, 255, 255, 0.6), transparent 60%);
+}
+
+/* ---------- 時間帯で変わる空 ---------- */
+.garden-sky-morning { --sky-top: #DCEFE6; --sky-bottom: #FCF3D3; }
+.garden-sky-day     { --sky-top: #D6E8EC; --sky-bottom: #F6F2E6; }
+.garden-sky-evening { --sky-top: #F4C9B6; --sky-bottom: #F8EADC; }
+.garden-sky-night   { --sky-top: #2E3A55; --sky-bottom: #55607C; --garden-text: #D9DEEA; }
+
+/* 夜は、星を見せて、庭全体を少しだけ暗くする */
+.garden-sky-night::before {
+  opacity: 1;
+}
+
+.garden-stage {
+  transition: filter 0.8s ease;
+}
+
+.garden-sky-night .garden-stage {
+  filter: brightness(0.86) saturate(0.92);
+}
+
+/* ダークモードの時は、空を「深い色」にする（明るい空だけが浮いて見えないように）
+   灰色に寄せるとくすんで見えるので、色みは残したまま暗くしている */
+body.dark .garden-sky-morning { --sky-top: #2C5A6E; --sky-bottom: #C9C48F; --garden-text: #2C3F3A; }
+body.dark .garden-sky-day     { --sky-top: #244E66; --sky-bottom: #4F8791; --garden-text: #DDEAEC; }
+body.dark .garden-sky-evening { --sky-top: #41305C; --sky-bottom: #B8644F; --garden-text: #F0DFD8; }
+body.dark .garden-sky-night   { --sky-top: #232B40; --sky-bottom: #2B322A; --garden-text: var(--ink-soft); }
+
+/* ダークモードでは、床の白さがまぶしくならないよう、庭を少しだけ暗くする */
+body.dark .garden-stage {
+  filter: brightness(0.93);
+}
+
+body.dark .garden-sky-night .garden-stage {
+  filter: brightness(0.86) saturate(0.92);
 }
 
 /* 庭が2つ以上ある時は、横にスワイプして切り替える */
@@ -1685,6 +1760,18 @@ body.dark {
   overflow: hidden;
 }
 
+/* 床の下に落ちる、やわらかい影（床が宙に浮いて見えないように） */
+.garden-stage::before {
+  content: "";
+  position: absolute;
+  left: 6%;
+  top: 68%;
+  width: 88%;
+  height: 34%;
+  background: radial-gradient(closest-side, rgba(60, 45, 35, 0.26), rgba(60, 45, 35, 0));
+  pointer-events: none;
+}
+
 .garden-floor {
   position: absolute;
   left: 0;
@@ -1696,6 +1783,31 @@ body.dark {
 .garden-slot {
   position: absolute;
   pointer-events: none; /* 画像の透明な部分ではタップを受けない（タップは下の .garden-slot-hit だけ） */
+}
+
+/* 鉢の足元の影（床に置かれている感じを出す） */
+.garden-slot::before {
+  content: "";
+  position: absolute;
+  left: 20%;
+  top: 90.5%;
+  width: 62%;
+  height: 8%;
+  background: radial-gradient(closest-side, rgba(70, 50, 40, 0.34), rgba(70, 50, 40, 0));
+}
+
+/* 育った直後・植えた直後の鉢を、ぽんと弾ませる */
+.garden-slot.just-grew .potted-plant {
+  animation: garden-pop 0.9s ease-out 0.2s both;
+  transform-origin: 50% 95%;
+}
+
+@keyframes garden-pop {
+  0% { transform: scale(1); }
+  25% { transform: scale(1.12, 0.92); }
+  50% { transform: scale(0.95, 1.1); }
+  75% { transform: scale(1.03, 0.98); }
+  100% { transform: scale(1); }
 }
 
 .garden-slot-hit {
@@ -1723,10 +1835,43 @@ body.dark {
   margin: 0;
 }
 
+/* ---------- 時間帯を切り替えるスライダー（デモ用） ---------- */
+.sky-slider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 2px;
+  color: var(--garden-text);
+}
+
+.sky-slider-icon {
+  width: 17px;
+  height: 17px;
+  stroke: currentColor;
+  flex-shrink: 0;
+}
+
+.sky-slider-range {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  margin: 0;
+  accent-color: var(--moss-deep);
+  cursor: pointer;
+}
+
+.sky-slider-label {
+  width: 2.4em;
+  text-align: right;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
 .garden-hint {
   text-align: center;
   font-size: 10.5px;
-  color: var(--ink-soft);
+  color: var(--garden-text);
   margin: 4px 0 0;
 }
 
@@ -1747,6 +1892,157 @@ body.dark {
   position: absolute;
   left: 0;
   top: 0;
+  /* 揺れの中心を、茎の根元（土の表面）にする */
+  transform-origin: 49.3% 68%;
+}
+
+/* ---------- 植物が風でゆっくり揺れる（背が高いほど、少し大きく揺れる） ---------- */
+.sway-sprout { animation: plant-sway-small 5s ease-in-out infinite; }
+.sway-bud    { animation: plant-sway 6s ease-in-out infinite; }
+.sway-flower { animation: plant-sway 7s ease-in-out infinite; }
+
+@keyframes plant-sway {
+  0%, 100% { transform: rotate(-1.7deg); }
+  50% { transform: rotate(1.7deg); }
+}
+
+@keyframes plant-sway-small {
+  0%, 100% { transform: rotate(-2.4deg); }
+  50% { transform: rotate(2.4deg); }
+}
+
+/* ---------- 花が咲いた鉢の、小さな光 ---------- */
+.plant-sparkle {
+  position: absolute;
+  left: 66%;
+  top: 6%;
+  font-size: 9px;
+  line-height: 1;
+  color: #FFF3C4;
+  text-shadow: 0 0 4px rgba(255, 214, 120, 0.9);
+  opacity: 0;
+  pointer-events: none;
+  animation: plant-twinkle 6s ease-in-out infinite;
+}
+
+@keyframes plant-twinkle {
+  0%, 70%, 100% { opacity: 0; transform: scale(0.4) rotate(0deg); }
+  80% { opacity: 1; transform: scale(1.2) rotate(20deg); }
+  90% { opacity: 0; transform: scale(0.6) rotate(40deg); }
+}
+
+/* ---------- 植える場面（種が飛んできて、鉢に着地する） ----------
+   時間の流れ： 0.3秒 種が飛び始める → 1.2秒 着地して鉢が弾む →（芽が出る場合）2.0秒 種が消えて芽が出る */
+.planting-scene {
+  position: relative;
+  width: 170px;
+  margin: 0 auto;
+  aspect-ratio: 512 / 500; /* 画像(512×768px)のうち、鉢のまわり（下の500px分）だけを見せる */
+}
+
+/* 鉢・種・芽を、元の画像と同じ 512×768 の比率で重ねる土台 */
+.planting-canvas {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  aspect-ratio: 512 / 768;
+}
+
+.planting-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  user-select: none;
+}
+
+.planting-body,
+.planting-seed-x,
+.planting-seed-y {
+  position: absolute;
+  inset: 0;
+}
+
+/* 着地の瞬間に、鉢がふにょっと弾む（鉢の底を中心に、つぶれて → 伸びて → 戻る） */
+.planting-body {
+  transform-origin: 50% 96%;
+  animation: planting-squash 0.6s ease-out 1.2s both;
+}
+
+@keyframes planting-squash {
+  0% { transform: scale(1, 1); }
+  25% { transform: scale(1.1, 0.88); }
+  55% { transform: scale(0.95, 1.07); }
+  80% { transform: scale(1.02, 0.98); }
+  100% { transform: scale(1, 1); }
+}
+
+/* 種：横は一定の速さ、縦はだんだん速く（落ちる動き）。合わせると弧になる */
+.planting-seed-x {
+  animation: planting-seed-x 0.9s linear 0.3s both;
+}
+
+.planting-seed-y {
+  animation: planting-seed-y 0.9s cubic-bezier(0.5, 0, 0.9, 0.6) 0.3s both;
+}
+
+@keyframes planting-seed-x {
+  0% { transform: translateX(52%); opacity: 0; }
+  15% { opacity: 1; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes planting-seed-y {
+  0% { transform: translateY(-36%) rotate(-50deg); }
+  100% { transform: translateY(0) rotate(0deg); }
+}
+
+/* 芽：ふだんは隠しておく。芽が出る場合だけ、土の位置から伸びてくる */
+.planting-sprout {
+  opacity: 0;
+  transform-origin: 49.3% 68%;
+}
+
+.planting-scene.sprouts .planting-sprout {
+  animation: planting-sprout 0.7s cubic-bezier(0.3, 1.5, 0.5, 1) 2s both;
+}
+
+.planting-scene.sprouts .planting-seed {
+  animation: planting-seed-fade 0.3s ease 2s both;
+}
+
+@keyframes planting-sprout {
+  0% { opacity: 0; transform: scale(0.1); }
+  30% { opacity: 1; }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes planting-seed-fade {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* 動きを減らす設定にしている人には、揺れ・光・弾みを止めて、結果だけを見せる */
+@media (prefers-reduced-motion: reduce) {
+  .potted-plant-plant,
+  .plant-sparkle,
+  .garden-slot.just-grew .potted-plant,
+  .planting-body,
+  .planting-seed-x,
+  .planting-seed-y,
+  .planting-scene.sprouts .planting-sprout,
+  .planting-scene.sprouts .planting-seed {
+    animation: none;
+  }
+
+  .planting-scene.sprouts .planting-sprout {
+    opacity: 1;
+  }
+
+  .planting-scene.sprouts .planting-seed {
+    opacity: 0;
+  }
 }
 
 /* ---------- 植物だけのアイコン ---------- */
@@ -2233,4 +2529,62 @@ body.dark {
   color: var(--ink-soft);
   line-height: 1.6;
   margin: 0;
+}
+
+/* ---------- 双葉のマーク（絵文字の代わり） ---------- */
+.login-hero .plant-icon,
+.about-hero .plant-icon,
+.post-plant-box .plant-icon {
+  display: block;
+  margin: 0 auto;
+}
+
+/* デモボタン：緑のボタンの上でも双葉が見えるよう、白い丸の上に置く */
+.demo-btn-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #FBF9F2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.demo-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+/* ---------- 植えた直後の画面：文字とボタンを、アニメーションに合わせて順に出す ---------- */
+.post-plant-reveal {
+  animation: post-plant-reveal 0.5s ease 1.5s both; /* 種が着地したあとに出す */
+}
+
+.post-plant-reveal.late {
+  animation-delay: 2.6s; /* 芽が出る場合は、芽が出てからボタンを出す */
+}
+
+@keyframes post-plant-reveal {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 「さっそく芽が出ました」は、芽が出るのと同じタイミングで出す */
+.post-plant-sprouted {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--moss-deep);
+  margin: 0 0 6px;
+  animation: post-plant-reveal 0.5s ease 2.3s both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .post-plant-reveal,
+  .post-plant-sprouted {
+    animation: none;
+  }
 }

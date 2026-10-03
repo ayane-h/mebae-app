@@ -1,7 +1,7 @@
 import { SignedIn, SignedOut, SignIn, useAuth, useUser, useClerk, useSignIn } from "@clerk/clerk-react";
 import { useState, useEffect } from "react";
 import './App.css';
-import { Garden, PottedPlant, PlantIcon } from "./Garden.jsx";
+import { Garden, PottedPlant, PlantIcon, SproutIcon, PlantingScene } from "./Garden.jsx";
 
 // APIの場所。ローカルでは自分のPCで動かしているWorker。
 // Vercelなどで公開する時は、環境変数 VITE_API_BASE_URL に本番のWorkerのURLを入れて切り替える
@@ -133,7 +133,7 @@ function App() {
   const [activeTab, setActiveTab] = useState("home"); // "home" | "companies" | "records" | "settings"
   // タブの上に重ねて表示する「画面」（null = 何も重ねていない）
   const [screen, setScreen] = useState(null); // null | "detail" | "plant-new" | "desired-conditions" | "confirm-delete" | "about" | "post-plant-prompt"
-  const [postPlantCompany, setPostPlantCompany] = useState(null); // 今植えたばかりの企業（{id, company_name}）
+  const [postPlantCompany, setPostPlantCompany] = useState(null); // 今植えたばかりの企業（{id, company_name, hasJobText, sprouted}）
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("mebae-dark-mode") === "1");
   const [desiredConditions, setDesiredConditions] = useState([]);
   const [addingCondition, setAddingCondition] = useState(false);
@@ -262,7 +262,7 @@ function App() {
       ...postPlantCompany,
       status: "応募前",
       interest_level: 3,
-      growth_stage: "seed",
+      growth_stage: postPlantCompany.sprouted ? "sprout" : "seed",
     };
     openDetail(company);
     setPostPlantCompany(null);
@@ -847,13 +847,17 @@ function App() {
     fetchCompanies();
     fetchRecords();
 
-    // 求人票を入力していた場合だけ、「照合してみますか？」の提案画面を出す
-    if (jobText.trim()) {
-      setPostPlantCompany({ id: newCompanyId, company_name: registeredName });
-      setScreen("post-plant-prompt");
-    } else {
-      setScreen(null);
-    }
+    // 「◯◯を植えました」の画面を出す（種が鉢に着地するアニメーションつき）
+    // hasJobText：求人票を入れていたら、「照合してみますか？」の提案も一緒に出す
+    // sprouted：求人票と気になった理由の両方を入れていたら、植えた時点で双葉なので、続けて芽が出る動きを見せる
+    const hasJobText = !!jobText.trim();
+    setPostPlantCompany({
+      id: newCompanyId,
+      company_name: registeredName,
+      hasJobText,
+      sprouted: hasJobText && impressionContents.length > 0,
+    });
+    setScreen("post-plant-prompt");
   };
 
   // --- 集計（記録タブ・ホームタブで使う） ---
@@ -975,7 +979,7 @@ function App() {
       <div className="login-screen">
         <div className="login-inner">
           <div className="login-hero">
-            <span className="login-emoji">🌱</span>
+            <SproutIcon size={60} />
             <p className="login-app-name">めばえ</p>
             <p className="login-tagline">気になる会社を育てる、転職記録アプリ</p>
           </div>
@@ -987,7 +991,11 @@ function App() {
                 デモの庭を準備しています…
               </>
             ) : (
-              "🌱 デモで試してみる"
+              <>
+                {/* ボタンが緑なので、双葉は白い丸の上に置いて見分けやすくする */}
+                <span className="demo-btn-icon"><SproutIcon size={20} /></span>
+                デモで試してみる
+              </>
             )}
           </button>
           <p className="demo-note">登録なしで、見本データ入りの庭を触れます</p>
@@ -1463,7 +1471,8 @@ function App() {
 
           {me.isDemo && (
             <div className="demo-banner">
-              🌱 デモで体験中です。個人情報は入力しないでください
+              <SproutIcon size={16} />
+              デモで体験中です。個人情報は入力しないでください
             </div>
           )}
 
@@ -1689,7 +1698,7 @@ function App() {
           </div>
 
           <div className="about-hero">
-            <span className="about-emoji">🌱</span>
+            <SproutIcon size={60} />
             <p className="about-name">めばえ</p>
             <p className="about-tagline">転職活動を、庭で植物を育てるように</p>
           </div>
@@ -1723,25 +1732,55 @@ function App() {
           <p className="about-version">めばえ v1.0.0（個人開発）</p>
         </div>
       ) : screen === "post-plant-prompt" && postPlantCompany ? (
-        // ============ 植えた直後の提案画面 ============
+        // ============ 植えた直後の画面（種が鉢に着地 → 求人票があれば、照合の提案） ============
         <div className="post-plant-screen">
           <div className="post-plant-box">
-            <span className="post-plant-emoji">🌱</span>
-            <p className="post-plant-title">{postPlantCompany.company_name}を植えました</p>
-            <p className="post-plant-text">求人票と希望条件を照らし合わせてみますか？</p>
-            <div className="post-plant-buttons">
-              <button className="post-plant-go-btn" onClick={startRematchFromPrompt}>
-                照合してみる
-              </button>
-              <button
-                className="post-plant-later-btn"
-                onClick={() => {
-                  setPostPlantCompany(null);
-                  setScreen(null);
-                }}
-              >
-                あとで
-              </button>
+            {/* key を付けて、植えるたびにアニメーションを最初から再生する */}
+            <PlantingScene
+              key={postPlantCompany.id}
+              company={{ id: postPlantCompany.id }}
+              sprouts={postPlantCompany.sprouted}
+            />
+            <div className="post-plant-reveal">
+              <p className="post-plant-title">{postPlantCompany.company_name}を植えました</p>
+              {postPlantCompany.sprouted && (
+                <p className="post-plant-sprouted">さっそく芽が出ました</p>
+              )}
+            </div>
+            <div className={postPlantCompany.sprouted ? "post-plant-reveal late" : "post-plant-reveal"}>
+              {postPlantCompany.hasJobText ? (
+                <>
+                  <p className="post-plant-text">求人票と希望条件を照らし合わせてみますか？</p>
+                  <div className="post-plant-buttons">
+                    <button className="post-plant-go-btn" onClick={startRematchFromPrompt}>
+                      照合してみる
+                    </button>
+                    <button
+                      className="post-plant-later-btn"
+                      onClick={() => {
+                        setPostPlantCompany(null);
+                        setScreen(null);
+                        setActiveTab("home");
+                      }}
+                    >
+                      あとで
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="post-plant-buttons">
+                  <button
+                    className="post-plant-go-btn"
+                    onClick={() => {
+                      setPostPlantCompany(null);
+                      setScreen(null);
+                      setActiveTab("home");
+                    }}
+                  >
+                    庭を見る
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1752,7 +1791,8 @@ function App() {
             <div className="home-screen">
               {me.isDemo && (
                 <div className="demo-banner">
-                  🌱 デモで体験中です。個人情報は入力しないでください
+                  <SproutIcon size={16} />
+                  デモで体験中です。個人情報は入力しないでください
                 </div>
               )}
               <div className="page-header">
@@ -1768,8 +1808,13 @@ function App() {
                 </button>
               </div>
 
-              {/* 庭：眠らせていない企業の鉢植えを並べる。鉢をタップすると、その企業の詳細を開く */}
-              <Garden companies={companies.filter((c) => !c.is_sleeping)} onSelect={openDetail} />
+              {/* 庭：眠らせていない企業の鉢植えを並べる。鉢をタップすると、その企業の詳細を開く。
+                  デモの人には、時間帯（空の色）を切り替えるスライダーも出す */}
+              <Garden
+                companies={companies.filter((c) => !c.is_sleeping)}
+                onSelect={openDetail}
+                showTimeSlider={me.isDemo}
+              />
 
               {latestRecordCompany && (
                 <>
