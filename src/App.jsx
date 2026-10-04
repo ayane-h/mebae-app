@@ -1,5 +1,5 @@
 import { SignedIn, SignedOut, SignIn, useAuth, useUser, useClerk, useSignIn } from "@clerk/clerk-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import './App.css';
 import { Garden, PottedPlant, PlantIcon, SproutIcon, PlantingScene } from "./Garden.jsx";
 
@@ -757,6 +757,69 @@ function App() {
     fetchMemos(selectedCompany.id);
   };
 
+  // ---- 「戻る」操作への対応 ----
+  // スマホの「画面の左端から右へスワイプ」・Androidの戻るボタン・PCのブラウザの戻るボタンで、
+  // 企業詳細などの重ねた画面を閉じられるようにする。
+  // 仕組み：重ねた画面を開いたら、ブラウザの履歴に目印を1つ積む。戻る操作が来たら、画面を1つ閉じる
+  //
+  // 今の画面が、タブ表示から数えて何枚目に重なっているか（0 = タブ表示）
+  const screenDepth =
+    screen === null ? 0 : screen === "desired-conditions" && conditionsReturnTo ? 2 : 1;
+  const historyDepthRef = useRef(0);       // ブラウザの履歴に、目印を何個積んであるか
+  const ignorePopRef = useRef(0);          // 自分で履歴を戻した時に来る通知を、何回読み飛ばすか
+  const goBackRef = useRef(() => {});      // 「今の画面を1つ閉じる」処理（いつも最新の状態で動くよう、毎回入れ直す）
+
+  goBackRef.current = () => {
+    if (screen === "desired-conditions") {
+      setScreen(conditionsReturnTo); // 希望条件 → 元の画面（企業詳細・＋植える画面・設定タブ）
+    } else if (screen === "detail") {
+      closeDetail();
+    } else if (screen === "post-plant-prompt") {
+      setPostPlantCompany(null);
+      setScreen(null);
+    } else {
+      setScreen(null);
+    }
+  };
+
+  // 画面の重なりが変わったら、ブラウザの履歴の目印の数を合わせる
+  useEffect(() => {
+    const diff = screenDepth - historyDepthRef.current;
+    if (diff > 0) {
+      // 画面を開いた → 目印を積む
+      for (let i = 0; i < diff; i++) {
+        historyDepthRef.current += 1;
+        window.history.pushState({ mebaeDepth: historyDepthRef.current }, "");
+      }
+    } else if (diff < 0) {
+      // 画面の「←」ボタンなどで閉じた → 積んであった目印を取り除く（この時に来る通知は読み飛ばす）
+      historyDepthRef.current = screenDepth;
+      ignorePopRef.current += 1;
+      window.history.go(diff);
+    }
+  }, [screenDepth]);
+
+  // 戻る操作（スワイプ・戻るボタン）が来た時
+  useEffect(() => {
+    const handlePopState = (e) => {
+      if (ignorePopRef.current > 0) {
+        ignorePopRef.current -= 1; // 自分で履歴を戻した分なので、何もしない
+        return;
+      }
+      const newDepth = e.state?.mebaeDepth ?? 0;
+      if (newDepth < historyDepthRef.current) {
+        historyDepthRef.current = newDepth;
+        goBackRef.current(); // 画面を1つ閉じる
+      } else if (newDepth > historyDepthRef.current) {
+        // 「進む」操作：閉じた画面は元に戻せないので、履歴の位置だけ元に戻す
+        ignorePopRef.current += 1;
+        window.history.go(historyDepthRef.current - newDepth);
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
   // 【自動実行・副作用】ログインが確認できたら、企業一覧を取得する
   // （ログイン前に取得しようとしても、APIから断られるだけなので、ログイン後に実行する）
   useEffect(() => {
@@ -961,21 +1024,19 @@ function App() {
     return new Date(b.created_at) - new Date(a.created_at);
   });
 
-  // 「しばらく記録がありません」の案内用：各企業の最後の活動日を調べて、
-  // 一番長く放置されている企業を1社だけ選ぶ（7日以上動きがなければ対象）
+  // 「しばらく記録がありません」の案内用：一番長く記録がない企業を、1社だけ選ぶ（7日以上動きがなければ対象）
+  // 眠らせた企業と、選考が終わった企業（内定・見送り・辞退）は、そっとしておく（案内に出さない）
+  // 最後に記録した日時(last_activity_at)は、Workerが企業ごとに計算して返してくれる
+  const NUDGE_DAYS = 7;
+  const FINISHED_STATUSES = ["内定", "見送り", "辞退"];
   let nudgeCompany = null;
   {
-    const lastActivityByCompany = {};
-    records.forEach((r) => {
-      if (!lastActivityByCompany[r.company_id] || r.created_at > lastActivityByCompany[r.company_id]) {
-        lastActivityByCompany[r.company_id] = r.created_at;
-      }
-    });
     let maxDays = 0;
     companies.forEach((c) => {
-      const lastDate = lastActivityByCompany[c.id] || c.created_at;
+      if (c.is_sleeping || FINISHED_STATUSES.includes(c.status)) return;
+      const lastDate = c.last_activity_at || c.created_at;
       const days = (Date.now() - new Date(lastDate).getTime()) / (1000 * 60 * 60 * 24);
-      if (days >= 7 && days > maxDays) {
+      if (days >= NUDGE_DAYS && days > maxDays) {
         maxDays = days;
         nudgeCompany = c;
       }
@@ -2090,7 +2151,7 @@ function App() {
               </p>
 
               {nudgeCompany && (
-                <div className="nudge-card">
+                <div className="nudge-card" onClick={() => openDetail(nudgeCompany)}>
                   <span className="nudge-dot">
                     <svg viewBox="0 0 24 24" fill="none" stroke="#8A8A7C" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: "18px", height: "18px" }}>
                       <path d="M17 12.5 A7 7 0 1 1 10.8 5.2 A5.6 5.6 0 0 0 17 12.5 Z" />
@@ -2102,6 +2163,7 @@ function App() {
                     <br />
                     ちょっと様子を見てみる？
                   </div>
+                  <span className="nudge-arrow">›</span>
                 </div>
               )}
 

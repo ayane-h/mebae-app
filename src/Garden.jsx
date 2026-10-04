@@ -15,10 +15,12 @@ import plantSprout from "./assets/garden/plant-sprout.png";
 import plantBud from "./assets/garden/plant-bud.png";
 import flowerSunflower from "./assets/garden/plant-flower-sunflower.png";
 import flowerTulip from "./assets/garden/plant-flower-tulip.png";
+import flowerdaisy from "./assets/garden/plant-flower-daisy.png";
+import flowerbellflower from "./assets/garden/plant-flower-bellflower.png";
 
 // 鉢・花の種類。画像を増やしたら、ここに足すだけでよい
 const POTS = [potTerracotta, potDark];
-const FLOWERS = [flowerSunflower, flowerTulip];
+const FLOWERS = [flowerSunflower, flowerTulip, flowerdaisy, flowerbellflower];
 
 // 成長段階 → 植物の画像（花だけは種類があるので、下の関数で選ぶ）
 const PLANT_BY_STAGE = {

@@ -619,6 +619,14 @@ body {
   padding: 12px 14px;
   font-size: 12.5px;
   line-height: 1.6;
+  cursor: pointer;
+}
+
+.nudge-arrow {
+  margin-left: auto;
+  color: var(--ink-soft);
+  font-size: 14px;
+  flex-shrink: 0;
 }
 
 .nudge-dot {
