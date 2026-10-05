@@ -2254,6 +2254,12 @@ body.dark .garden-sky-night .garden-stage {
   .about-screen {
     padding-bottom: 24px;
   }
+
+    /* PC表示では、外側（#root）がすでに中央寄せ・余白ありなので、高さの指定を外す */
+  .login-screen {
+    min-height: auto;
+    padding: 0;
+  }
 }
 
 /* ---------- ひとことメモ ---------- */
@@ -2349,12 +2355,6 @@ body.dark .garden-sky-night .garden-stage {
     font-size: 16px;
   }
 }
-
-  /* PC表示では、外側（#root）がすでに中央寄せ・余白ありなので、高さの指定を外す */
-  .login-screen {
-    min-height: auto;
-    padding: 0;
-  }
 
   /* ---------- ログイン画面：アプリ名・デモボタン ---------- */
 .login-inner {
@@ -2710,6 +2710,396 @@ body.dark .garden-sky-night .garden-stage {
 @media (prefers-reduced-motion: reduce) {
   .post-plant-reveal,
   .post-plant-sprouted {
+    animation: none;
+  }
+}
+
+/* ============================================================
+   文字を選択したとき・変換中の色
+   ============================================================ */
+
+/* ダークモードのときだけ、ブラウザに「暗い画面です」と伝える
+   （:has は「中に body.dark があるとき」という意味） */
+:root:has(body.dark) {
+  color-scheme: dark;
+}
+
+/* 文字を選択したときの色（ライト）：淡い緑の背景に、濃い緑の文字 */
+::selection {
+  background: #CFE6C9;
+  color: #24352B;
+}
+
+/* 文字を選択したときの色（ダーク）：深めの緑の背景に、白い文字 */
+body.dark ::selection {
+  background: #4E7A5A;
+  color: #FFFFFF;
+}
+
+/* ============================================================
+企業詳細：書きやすさの見直し（選考メモ・選考フロー・求人票・URL）
+   ============================================================ */
+
+/* ---- 編集欄の下に出す、小さな案内文 ---- */
+.edit-hint {
+  margin: 6px 2px 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+/* ---- 確認したいこと・選考メモ：1件ずつカードで並べる ---- */
+.memo-list {
+  display: flex;
+  flex-direction: column; /* 縦に並べる */
+  gap: 8px;
+}
+
+.memo-card {
+  display: flex;
+  align-items: flex-start; /* ×は1行目の高さにそろえる */
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.memo-card-text {
+  flex: 1;
+  min-width: 0;             /* これが無いと、長い文字が枠を押し広げてはみ出す */
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink);
+  white-space: pre-wrap;    /* 書いた改行をそのまま表示し、枠の幅で折り返す */
+  overflow-wrap: anywhere;  /* URLのような切れ目のない長い文字も、途中で折り返す */
+}
+
+.memo-card-x {
+  flex-shrink: 0;
+  padding: 0 2px;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+/* 「＋ メモを追加」：点線の枠 */
+.memo-add {
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  text-align: center;
+  cursor: pointer;
+}
+
+/* メモ・選考フローの入力欄（書いた行数に合わせて、高さが自動で伸びる） */
+.memo-edit,
+.flow-edit {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  background: var(--paper);
+  border: 1.5px solid var(--moss-deep);
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink);
+  resize: none;      /* 自動で伸びるので、つまみは出さない */
+  overflow: hidden;  /* 高さを中身に合わせるので、中のスクロールバーは出さない */
+  outline: none;
+  box-sizing: border-box;
+}
+
+/* ---- 選考フロー：複数行をそのまま表示する ---- */
+.selection-flow-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* たたんでいる時は、4行までで切って「…」にする */
+.selection-flow-text.folded {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  overflow: hidden;
+}
+
+/* 「たたむ ▴／すべて見る ▾」のボタン */
+.fold-btn {
+  display: block;
+  margin: 6px 0 0 auto; /* 右に寄せる */
+  padding: 4px 6px;
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--moss-deep);
+  cursor: pointer;
+}
+
+/* ---- 求人票の本文欄：最初から広めにして、右下のつまみで自分でも伸ばせる ---- */
+.form-textarea.job-textarea {
+  min-height: 220px;
+  resize: vertical;
+}
+
+/* ---- 求人ページのURL：タップで編集できる箱 ---- */
+.job-url-box {
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.job-url-text {
+  display: block;
+  font-size: 12.5px;
+  color: var(--ink);
+  /* 長いURLは1行に収めて、末尾を「…」で省略する */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.job-url-placeholder {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+/* iPhoneで入力欄をタップした時に画面がズームしないよう、文字を16pxにする */
+@supports (-webkit-touch-callout: none) {
+  .memo-edit,
+  .flow-edit {
+    font-size: 16px;
+  }
+}
+
+/* ============================================================
+   使い方ポップアップ（初回起動時）
+   土台は、ログアウト確認と同じ .modal-overlay / .modal-box を使っている
+   ============================================================ */
+.onboarding-box {
+  position: relative; /* 右上の「スキップ」を置く基準にする */
+  max-width: 340px;
+  padding-top: 34px;
+}
+
+.onboarding-skip {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  padding: 4px 6px;
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+/* めくっても箱の高さが変わらないよう、中身の高さをそろえておく */
+.onboarding-body {
+  min-height: 236px;
+  animation: onboarding-in 0.25s ease both;
+}
+
+@keyframes onboarding-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 絵を置く場所（高さをそろえて、上下左右の中央に置く） */
+.onboarding-art {
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.onboarding-title {
+  font-family: 'Shippori Mincho', serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0 0 8px;
+}
+
+.onboarding-text {
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--ink-soft);
+  margin: 0;
+  text-align: left;
+}
+
+/* ---- 2枚目：成長段階を横に並べる ---- */
+.onboarding-stages {
+  gap: 16px;
+}
+
+.onboarding-stage {
+  position: relative; /* 矢印を置く基準にする */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.onboarding-stage-label {
+  font-size: 10.5px;
+  color: var(--moss-deep);
+  font-weight: 700;
+}
+
+/* 段階と段階のあいだの矢印（すき間の中央に置く） */
+.onboarding-stage-arrow {
+  position: absolute;
+  right: -12px;
+  top: 12px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+/* ---- 3枚目：照合結果の見本 ---- */
+.onboarding-match {
+  width: 100%;
+  background: var(--bg);
+  border-radius: 12px;
+  padding: 6px 12px;
+}
+
+.onboarding-match-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 11.5px;
+  border-bottom: 1px solid var(--line);
+}
+
+.onboarding-match-row:last-child {
+  border-bottom: none;
+}
+
+.onboarding-match-label {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  color: var(--ink-soft);
+}
+
+.onboarding-match-note {
+  width: 5.5em;
+  text-align: left;
+  font-size: 10.5px;
+  color: var(--ink-soft);
+  flex-shrink: 0;
+}
+
+/* ---- 4枚目：「＋植える」ボタンの見本（押せない） ---- */
+.onboarding-plant-pill {
+  background: var(--btn-bg);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 9px 18px;
+  border-radius: 999px;
+  box-shadow: 0 3px 8px rgba(79, 122, 85, 0.25);
+}
+
+/* ---- 今、何枚目かを示す点 ---- */
+.onboarding-dots {
+  display: flex;
+  justify-content: center;
+  gap: 7px;
+  margin: 14px 0 16px;
+}
+
+.onboarding-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--line);
+}
+
+.onboarding-dot.active {
+  background: var(--moss-deep);
+}
+
+/* 動きを減らす設定にしている人には、ふわっと出る動きを止める */
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-body {
+    animation: none;
+  }
+}
+
+/* ============================================================
+   企業詳細：問いかけカード（まだ書いていない記録を、1つだけ案内する）
+   ============================================================ */
+.next-step-card {
+  margin: -6px 0 18px; /* 植物の箱のすぐ下に寄せる */
+  padding: 14px 16px;
+  background: var(--card-sprout-bg);
+  border-radius: 16px;
+  text-align: center;
+}
+
+/* 今の状態のひとこと（小さめ） */
+.next-step-line {
+  font-size: 11.5px;
+  color: var(--moss-deep);
+  font-weight: 700;
+  margin: 0 0 6px;
+}
+
+/* 問いかけ（カードの主役） */
+.next-step-question {
+  font-family: 'Shippori Mincho', serif;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.6;
+  color: var(--ink);
+  margin: 0 0 12px;
+}
+
+.next-step-btn {
+  background: var(--btn-bg);
+  color: #fff;
+  border: none;
+  padding: 9px 18px;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.next-step-btn:hover {
+  background: var(--btn-bg-hover);
+}
+
+/* カードから案内された入力欄：ふちを緑に2回光らせる */
+.guide-flash {
+  animation: guide-flash 0.8s ease 2;
+}
+
+@keyframes guide-flash {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(127, 163, 122, 0); }
+  50% { box-shadow: 0 0 0 5px rgba(127, 163, 122, 0.55); }
+}
+
+/* 動きを減らす設定にしている人には、光らせない */
+@media (prefers-reduced-motion: reduce) {
+  .guide-flash {
     animation: none;
   }
 }

@@ -2,6 +2,11 @@ import { SignedIn, SignedOut, SignIn, useAuth, useUser, useClerk, useSignIn } fr
 import { useState, useEffect, useRef } from "react";
 import './App.css';
 import { Garden, PottedPlant, PlantIcon, SproutIcon, PlantingScene } from "./Garden.jsx";
+import { Onboarding } from "./Onboarding.jsx";
+import { NextStepCard } from "./NextStepCard.jsx";
+
+// 使い方ポップアップを「もう見た」ことを、このブラウザに覚えておくための名前
+const ONBOARDING_SEEN_KEY = "mebae-onboarding-seen";
 
 // APIの場所。ローカルでは自分のPCで動かしているWorker。
 // Vercelなどで公開する時は、環境変数 VITE_API_BASE_URL に本番のWorkerのURLを入れて切り替える
@@ -68,6 +73,44 @@ const blurOnEnter = (e) => {
   e.target.blur();
 };
 
+// 書いた行数に合わせて、高さが自動で伸びる入力欄（選考フロー・選考メモで使う）
+// ふつうのtextareaは高さが固定で、長く書くと中でスクロールしてしまうため、
+// 文字が変わるたびに「中身の高さ（scrollHeight）」を測って、その高さにそろえる
+function AutoTextarea({ value, ...rest }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";                  // いったん戻してから測る（消した時に縮めるため）
+    el.style.height = el.scrollHeight + "px";  // 中身ぴったりの高さにする
+  }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      rows={1}
+      onFocus={(e) => {
+        const len = e.target.value.length;
+        e.target.setSelectionRange(len, len); // カーソルを文字の最後に移動させる
+      }}
+      {...rest}
+    />
+  );
+}
+
+// 選考フローがこの行数を超えたら、「たたむ」ボタンを出す
+const FLOW_FOLD_LINES = 4;
+
+// 企業詳細の植物の下に出すひとこと（成長段階ごと）
+// 以前は「◯つのことを知りました」と数を出していたが、10個以上で「10つ」になってしまうのと、
+// 数が多いのに段階が進まないように見えることがあったため、数字を使わない文にした
+const STAGE_CAPTION = {
+  seed: "これから知っていく会社です",
+  sprout: "この会社のことが、少し見えてきました",
+  bud: "この会社のことが、だいぶ見えてきました",
+  flower: "この会社のことを、しっかり知りました",
+};
+
 // ひとことメモの最大文字数（バックエンドの SHORT_MEMO_MAX と同じ値にしておく）
 const SHORT_MEMO_MAX = 10;
 
@@ -83,6 +126,32 @@ function App() {
   const [demoStarting, setDemoStarting] = useState(false); // デモの庭を準備中かどうか
   const [demoError, setDemoError] = useState("");          // デモの準備に失敗した時のメッセージ
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false); // ログアウトの確認を表示中かどうか
+
+  // ---- 使い方ポップアップ ----
+  const [onboardingOpen, setOnboardingOpen] = useState(false); // 使い方ポップアップを表示中かどうか
+
+  // ログインが確認できた時に、まだ見ていなければ表示する
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    let seen = false;
+    try {
+      seen = localStorage.getItem(ONBOARDING_SEEN_KEY) === "1";
+    } catch {
+      seen = false; // 読み出せない時は、まだ見ていないものとして扱う
+    }
+    if (!seen) setOnboardingOpen(true);
+  }, [isLoaded, isSignedIn]);
+
+  // 閉じた時に「もう見た」と記録する（表示した時ではなく、閉じた時に記録する。
+  // 途中で再読み込みしてしまっても、もう一度見られるようにするため）
+  const closeOnboarding = () => {
+    setOnboardingOpen(false);
+    try {
+      localStorage.setItem(ONBOARDING_SEEN_KEY, "1");
+    } catch {
+      // 保存できなくても、アプリの動きには影響しない
+    }
+  };
 
   const [companies, setCompanies] = useState([]);
 
@@ -117,6 +186,9 @@ function App() {
   const [jobTextDraft, setJobTextDraft] = useState(""); // 求人票本文の編集中の下書き
   const [editingSelectionFlow, setEditingSelectionFlow] = useState(false); // 選考フローを編集中かどうか
   const [selectionFlowDraft, setSelectionFlowDraft] = useState(""); // 選考フローの編集中の下書き
+  const [flowFolded, setFlowFolded] = useState(false); // 長い選考フローをたたんでいるかどうか
+  const [editingJobUrl, setEditingJobUrl] = useState(false); // 求人ページのURLを編集中かどうか
+  const [jobUrlDraft, setJobUrlDraft] = useState(""); // 求人ページのURLの編集中の下書き
   const [showAllLog, setShowAllLog] = useState(false); // 「最近の記録」を全件表示するかどうか
   const [showSleeping, setShowSleeping] = useState(false); // 眠らせた企業を開いて見せるかどうか
   const [filterType, setFilterType] = useState("all"); // "all" | "progress" | "fav"
@@ -248,6 +320,8 @@ function App() {
     setJobTextDraft(company.job_text || "");
     setEditingSelectionFlow(false);
     setSelectionFlowDraft(company.selection_flow || "");
+    setFlowFolded(false);
+    setEditingJobUrl(false);
     setAddingImpressionType(null);
     setEditingImpressionId(null);
     setEditingHonne(false);
@@ -262,6 +336,31 @@ function App() {
   const closeDetail = () => {
     setScreen(null);
     setSelectedCompany(null);
+  };
+
+  // 問いかけカードのボタンを押した時：その種類の入力欄を開いて、そこまでスクロールし、ふちを光らせる
+  const goToKind = (kind) => {
+    if (kind === "job_text") setShowJobTextEditor(true); // 求人票の本文欄を開く
+    if (kind === "impression") startAddImpression("good"); // 「いいな」の入力欄を開く
+    if (kind === "honne") setEditingHonne(true);           // 本音の入力欄を開く
+    if (kind === "memo") startAddMemo();                   // メモの入力欄を開く
+
+    // 入力欄が画面に出るのを少し待ってから、その欄を探す
+    setTimeout(() => {
+      // 求人票の欄は、クラス名で探す。
+      // ほかの3つは autoFocus でカーソルが入るので、「今カーソルが入っている欄」がそのまま目的の欄になる
+      const el =
+        kind === "job_text"
+          ? document.querySelector(".job-text-editor .job-textarea")
+          : document.activeElement;
+      // 見つからない時や、カード自身のボタンにカーソルが残っている時は、何もしない
+      if (!el || el === document.body || el.closest(".next-step-card")) return;
+
+      if (kind === "job_text") el.focus({ preventScroll: true });
+      el.scrollIntoView({ behavior: "smooth", block: "center" }); // 画面の中央あたりまでスクロール
+      el.classList.add("guide-flash");                             // ふちを光らせる
+      setTimeout(() => el.classList.remove("guide-flash"), 1800);  // 光り終わったら、目印を外す
+    }, 50);
   };
 
   // 「植えた直後の提案」画面で「照合してみる」を選んだ時の処理
@@ -588,6 +687,10 @@ function App() {
 
   // 求人票の本文を保存してから、続けてAIに再照合してもらう
   const saveJobTextAndRematch = async () => {
+    // 押した時点で、求人票の本文欄を閉じる
+    // （長い本文が開いたままだと、すぐ上に出る照合結果やエラーが画面の外に行ってしまうため）
+    setShowJobTextEditor(false);
+
     await apiFetch(`/companies/${selectedCompany.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json; charset=utf-8" },
@@ -604,18 +707,58 @@ function App() {
   };
 
   const saveSelectionFlow = async () => {
-    await apiFetch(`/companies/${selectedCompany.id}`, {
+    setEditingSelectionFlow(false);
+
+    // 前後の空白・改行を取り除く。中身が変わっていなければ、APIは呼ばない
+    // （タップして何も変えずに閉じただけで「手動で編集済み」になるのを防ぐ）
+    const trimmed = selectionFlowDraft.trim();
+    if (trimmed === (selectedCompany.selection_flow || "")) return;
+
+    const res = await apiFetch(`/companies/${selectedCompany.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json; charset=utf-8" },
-      body: JSON.stringify({ selection_flow: selectionFlowDraft }),
+      body: JSON.stringify({ selection_flow: trimmed }),
     });
+    if (!res.ok) {
+      alert("選考フローの保存に失敗しました");
+      return;
+    }
+    // 空にして保存した時は「手入力なし」に戻る（次のAI照合で、求人票から読み取り直してもらえる）
     setSelectedCompany((prev) => prev && {
       ...prev,
-      selection_flow: selectionFlowDraft,
-      selection_flow_manually_edited: 1,
+      selection_flow: trimmed || null,
+      selection_flow_manually_edited: trimmed ? 1 : 0,
     });
     fetchCompanies();
-    setEditingSelectionFlow(false);
+  };
+
+  // 求人ページのURL：タップで編集を始める
+  const startEditJobUrl = () => {
+    setJobUrlDraft(selectedCompany.job_url || "");
+    setEditingJobUrl(true);
+  };
+
+  // 求人ページのURL：確定して保存する（中身が変わっていなければ、APIは呼ばない）
+  const saveJobUrl = async () => {
+    setEditingJobUrl(false);
+    let trimmed = jobUrlDraft.trim();
+    // 「example.com/...」のように https:// を省いて書いた時は、頭に付け足す
+    if (trimmed && !/^https?:\/\//i.test(trimmed)) trimmed = "https://" + trimmed;
+    if (trimmed === (selectedCompany.job_url || "")) return;
+
+    const res = await apiFetch(`/companies/${selectedCompany.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ job_url: trimmed }),
+    });
+    if (!res.ok) {
+      // 「http」から始まっていない など。Workerが返した理由をそのまま見せる
+      const err = await res.json().catch(() => ({}));
+      alert(err.error || "求人ページのURLの保存に失敗しました");
+      return;
+    }
+    setSelectedCompany((prev) => prev && { ...prev, job_url: trimmed || null });
+    fetchCompanies();
   };
 
   // 希望条件の表をタップして、手動で○△×を切り替える（yes → mid → no → yes …の順）
@@ -767,7 +910,7 @@ function App() {
     screen === null ? 0 : screen === "desired-conditions" && conditionsReturnTo ? 2 : 1;
   const historyDepthRef = useRef(0);       // ブラウザの履歴に、目印を何個積んであるか
   const ignorePopRef = useRef(0);          // 自分で履歴を戻した時に来る通知を、何回読み飛ばすか
-  const goBackRef = useRef(() => {});      // 「今の画面を1つ閉じる」処理（いつも最新の状態で動くよう、毎回入れ直す）
+  const goBackRef = useRef(() => { });      // 「今の画面を1つ閉じる」処理（いつも最新の状態で動くよう、毎回入れ直す）
 
   goBackRef.current = () => {
     if (screen === "desired-conditions") {
@@ -946,18 +1089,23 @@ function App() {
   });
   const stageTotal = companies.length || 1;
 
+  // 選考フローが長い（FLOW_FOLD_LINES行を超える）かどうか。長い時だけ「たたむ」ボタンを出す
+  const flowIsLong =
+    !!selectedCompany?.selection_flow &&
+    selectedCompany.selection_flow.split("\n").length > FLOW_FOLD_LINES;
+
   // AI照合の失敗の案内（コードに対応する文言を選ぶ。知らないコードの時は、Workerのメッセージをそのまま使う）
   const rematchErrorInfo = !rematchError
     ? null
     : rematchError.code === "demo_limit"
       ? {
-          title: `デモでのAI照合は${me.rematchLimit}回までです`,
-          text: "見本データの照合結果や、ほかの機能もぜひ触ってみてください。",
-        }
+        title: `デモでのAI照合は${me.rematchLimit}回までです`,
+        text: "見本データの照合結果や、ほかの機能もぜひ触ってみてください。",
+      }
       : REMATCH_ERRORS[rematchError.code] || {
-          title: rematchError.message || "照合に失敗しました",
-          text: "もう一度お試しください。",
-        };
+        title: rematchError.message || "照合に失敗しました",
+        text: "もう一度お試しください。",
+      };
 
   const visibleRecords = showAllRecords ? companyRecords : companyRecords.slice(0, 2);
 
@@ -1046,1330 +1194,1385 @@ function App() {
 
   return (
     <>
-    <SignedOut>
-      <div className="login-screen">
-        <div className="login-inner">
-          <div className="login-hero">
-            <SproutIcon size={60} />
-            <p className="login-app-name">めばえ</p>
-            <p className="login-tagline">気になる会社を育てる、転職記録アプリ</p>
-          </div>
-
-          <button className="demo-btn" onClick={startDemo} disabled={demoStarting || !signInLoaded}>
-            {demoStarting ? (
-              <>
-                <span className="spinner"></span>
-                デモの庭を準備しています…
-              </>
-            ) : (
-              <>
-                {/* ボタンが緑なので、双葉は白い丸の上に置いて見分けやすくする */}
-                <span className="demo-btn-icon"><SproutIcon size={20} /></span>
-                デモで試してみる
-              </>
-            )}
-          </button>
-          <p className="demo-note">登録なしで、見本データ入りの庭を触れます</p>
-          {demoError && <p className="demo-error">{demoError}</p>}
-
-          <div className="login-divider"><span>または、アカウントでログイン</span></div>
-
-          <SignIn />
-        </div>
-      </div>
-    </SignedOut>
-
-    <SignedIn>
-    <div className="page">
-      {screen === "detail" && selectedCompany ? (
-        // ============ 企業詳細画面（タブの上に重ねて表示） ============
-        <div className="detail-screen">
-          <div className="detail-header">
-            <button className="back-btn" onClick={closeDetail}>←</button>
-            <div className="detail-title-wrap">
-              <p className="detail-company">{selectedCompany.company_name}</p>
-              <div className="detail-meta-row">
-                <p className="detail-meta">{selectedCompany.status}</p>
-                <div className="star-picker header-star-picker">
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <span
-                      key={n}
-                      className={n <= selectedCompany.interest_level ? "star filled" : "star"}
-                      onClick={() => updateInterestLevel(selectedCompany.id, n)}
-                    >
-                      ★
-                    </span>
-                  ))}
-                </div>
-              </div>
+      <SignedOut>
+        <div className="login-screen">
+          <div className="login-inner">
+            <div className="login-hero">
+              <SproutIcon size={60} />
+              <p className="login-app-name">めばえ</p>
+              <p className="login-tagline">気になる会社を育てる、転職記録アプリ</p>
             </div>
-            {selectedCompany.job_url && (
-              <a className="job-url-link" href={selectedCompany.job_url} target="_blank" rel="noreferrer">
-                <svg viewBox="0 0 24 24" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none">
-                  <path d="M9 15 L15 9" />
-                  <path d="M10 7 L12 5 A3.5 3.5 0 0 1 17.5 9.5 L15.5 11.5" />
-                  <path d="M14 17 L12 19 A3.5 3.5 0 0 1 6.5 14.5 L8.5 12.5" />
-                </svg>
-                求人ページ
-              </a>
-            )}
-          </div>
 
-          <div className="detail-plant">
-            <PottedPlant company={selectedCompany} width={120} />
-            <p className="stage-caption">
-              この会社について、{impressions.length + memos.length + (honne && honne.trim() ? 1 : 0)}つのことを知りました
-            </p>
-            {editingShortMemo ? (
-              <div className="short-memo-edit-wrap">
-                <input
-                  className="short-memo-input"
-                  autoFocus
-                  maxLength={SHORT_MEMO_MAX}
-                  value={shortMemoDraft}
-                  onChange={(e) => setShortMemoDraft(e.target.value)}
-                  onBlur={saveShortMemo}
-                  onKeyDown={blurOnEnter}
-                  placeholder="ひとことメモ"
-                />
-                <span className="short-memo-count">
-                  {shortMemoDraft.length}/{SHORT_MEMO_MAX}
-                </span>
-              </div>
-            ) : (
-              <div className="short-memo-box" onClick={startEditShortMemo}>
-                {selectedCompany.short_memo ? (
-                  <span className="short-memo-text">{selectedCompany.short_memo}</span>
-                ) : (
-                  <span className="short-memo-placeholder">＋ ひとことメモ</span>
-                )}
-              </div>
-            )}
-            <button
-              className={selectedCompany.is_favorite ? "fav-btn active" : "fav-btn"}
-              onClick={(e) => toggleFavorite(selectedCompany, e)}
-            >
-              <svg viewBox="0 0 24 24">
-                <path d="M12 20 C6 15 3 11.5 3 8 C3 5 5.2 3 8 3 C10 3 11.3 4.3 12 5.5 C12.7 4.3 14 3 16 3 C18.8 3 21 5 21 8 C21 11.5 18 15 12 20 Z" />
-              </svg>
+            <button className="demo-btn" onClick={startDemo} disabled={demoStarting || !signInLoaded}>
+              {demoStarting ? (
+                <>
+                  <span className="spinner"></span>
+                  デモの庭を準備しています…
+                </>
+              ) : (
+                <>
+                  {/* ボタンが緑なので、双葉は白い丸の上に置いて見分けやすくする */}
+                  <span className="demo-btn-icon"><SproutIcon size={20} /></span>
+                  デモで試してみる
+                </>
+              )}
             </button>
+            <p className="demo-note">登録なしで、見本データ入りの庭を触れます</p>
+            {demoError && <p className="demo-error">{demoError}</p>}
+
+            <div className="login-divider"><span>または、アカウントでログイン</span></div>
+
+            <SignIn />
           </div>
+        </div>
+      </SignedOut>
 
-          <div className="detail-body">
-
-            <div className="section-block">
-              <div className="block">
-                <p className="section-h">
-                  <svg className="section-icon" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 20 V11" />
-                    <path d="M12 14 C7 14 6 10 6 7 C10 7 12 9.5 12 14 Z" />
-                    <path d="M12 12 C17 12 18 8.5 18 6 C14 6 12 8 12 12 Z" />
-                  </svg>
-                  この会社について
-                </p>
-                <p className="field-label">
-                  希望条件との照合<span className="field-label-sub">（タップで直せます）</span>
-                </p>
-                <table className="req-table">
-                  <tbody>
-                    {requirementMatches.map((m) => (
-                      <tr key={m.condition_id}>
-                        <td>{m.label}</td>
-                        <td
-                          className={`mark ${m.mark} editable`}
-                          onClick={() => cycleMark(m)}
-                        >
-                          {m.mark === "yes" ? "○" : m.mark === "mid" ? "△" : "×"}{" "}
-                          <span className={m.manually_edited ? "mark-note dimmed" : "mark-note"}>
-                            {m.note}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <button
-                  className="rematch-btn"
-                  onClick={saveJobTextAndRematch}
-                  disabled={isRematching || (me.isDemo && me.rematchRemaining === 0)}
-                >
-                  {me.isDemo && me.rematchRemaining === 0 && !isRematching ? (
-                    "デモでのAI照合は上限に達しました"
-                  ) : isRematching ? (
-                    <>
-                      <span className="spinner"></span>
-                      照合中...
-                    </>
-                  ) : requirementMatches.length === 0 ? (
-                    "AIに求人内容と希望条件を照らし合わせてもらう"
-                  ) : (
-                    "AIにもう一度照らし合わせてもらう"
-                  )}
-                </button>
-                {me.isDemo && !isRematching && (
-                  <p className="demo-limit-note">
-                    AI照合（デモでは{me.rematchLimit}回まで・残り{me.rematchRemaining ?? 0}回）
-                  </p>
-                )}
-                {isRematching && (
-                  <p className="rematch-hint">
-                    求人票を読んで、選考フローや質問の候補もまとめて考えています
-                  </p>
-                )}
-                {rematchErrorInfo && !isRematching && (
-                  <div className="rematch-error">
-                    <div className="rematch-error-body">
-                      <p className="rematch-error-title">{rematchErrorInfo.title}</p>
-                      <p className="rematch-error-text">{rematchErrorInfo.text}</p>
-                      {rematchError.code === "no_conditions" && (
-                        <button
-                          className="rematch-error-action"
-                          onClick={() => openConditions("detail")}
-                        >
-                          希望条件を登録する →
-                        </button>
-                      )}
-                      {rematchError.code === "no_job_text" && (
-                        <button
-                          className="rematch-error-action"
-                          onClick={() => setShowJobTextEditor(true)}
-                        >
-                          求人票の本文を貼り付ける ↓
-                        </button>
-                      )}
-                    </div>
-                    <span className="rematch-error-close" onClick={() => setRematchError(null)}>×</span>
-                  </div>
-                )}
-
-                <div className="job-text-block">
-                  <p
-                    className="field-label job-text-toggle"
-                    onClick={() => setShowJobTextEditor(!showJobTextEditor)}
-                  >
-                    <span>求人票の本文</span>
-                    <span className="job-text-chevron">
-                      {showJobTextEditor ? "閉じる ▴" : "編集する ▾"}
-                    </span>
-                  </p>
-                  {showJobTextEditor && (
-                    <div className="job-text-editor">
-                      <textarea
-                        className="form-textarea"
-                        value={jobTextDraft}
-                        onChange={(e) => setJobTextDraft(e.target.value)}
-                      />
-                      <p className="job-text-warning">
-                        貼り直しただけでは上の照合結果は変わりません。反映するには上部の「AIにもう一度照らし合わせてもらう」ボタンを押してください
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="section-block">
-              <div className="block">
-                <p className="section-h">
-                  <svg className="section-icon" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M5 13 C5 8 8.5 5 13 5 C17 5 20 7.8 20 11.5 C20 15.2 17 18 13 18 C11.8 18 10.7 17.8 9.7 17.4 L6 19 L7 15.8 C5.7 14.8 5 13.5 5 13 Z" />
-                  </svg>
-                  私が感じたこと
-                </p>
-
-                <p className="field-label">いいなと思ったこと</p>
-                <div className="chip-row">
-                  {impressions.filter((imp) => imp.type === "good").map((imp) =>
-                    editingImpressionId === imp.id ? (
-                      <input
-                        key={imp.id}
-                        className="chip-edit-input"
-                        autoFocus
-                        value={editingImpressionValue}
-                        onChange={(e) => setEditingImpressionValue(e.target.value)}
-                        onBlur={commitEditImpression}
-                        onKeyDown={blurOnEnter}
-                      />
-                    ) : (
-                      <div className="chip removable" key={imp.id} onClick={() => startEditImpression(imp)}>
-                        <span className="chip-text">{imp.content}</span>
+      <SignedIn>
+        <div className="page">
+          {screen === "detail" && selectedCompany ? (
+            // ============ 企業詳細画面（タブの上に重ねて表示） ============
+            <div className="detail-screen">
+              <div className="detail-header">
+                <button className="back-btn" onClick={closeDetail}>←</button>
+                <div className="detail-title-wrap">
+                  <p className="detail-company">{selectedCompany.company_name}</p>
+                  <div className="detail-meta-row">
+                    <p className="detail-meta">{selectedCompany.status}</p>
+                    <div className="star-picker header-star-picker">
+                      {[1, 2, 3, 4, 5].map((n) => (
                         <span
-                          className="chip-x"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteImpression(imp.id);
-                          }}
+                          key={n}
+                          className={n <= selectedCompany.interest_level ? "star filled" : "star"}
+                          onClick={() => updateInterestLevel(selectedCompany.id, n)}
                         >
-                          ×
+                          ★
                         </span>
-                      </div>
-                    )
-                  )}
-                  {addingImpressionType === "good" ? (
-                    <input
-                      className="chip-edit-input"
-                      autoFocus
-                      value={newChipValue}
-                      onChange={(e) => setNewChipValue(e.target.value)}
-                      onBlur={commitAddImpression}
-                      onKeyDown={blurOnEnter}
-                    />
-                  ) : (
-                    <div className="chip add-chip" onClick={() => startAddImpression("good")}>＋ 追加</div>
-                  )}
-                </div>
-
-                <p className="field-label" style={{ marginTop: "14px" }}>気になること</p>
-                <div className="chip-row">
-                  {impressions.filter((imp) => imp.type === "concern").map((imp) =>
-                    editingImpressionId === imp.id ? (
-                      <input
-                        key={imp.id}
-                        className="chip-edit-input"
-                        autoFocus
-                        value={editingImpressionValue}
-                        onChange={(e) => setEditingImpressionValue(e.target.value)}
-                        onBlur={commitEditImpression}
-                        onKeyDown={blurOnEnter}
-                      />
-                    ) : (
-                      <div className="chip removable" key={imp.id} onClick={() => startEditImpression(imp)}>
-                        <span className="chip-text">{imp.content}</span>
-                        <span
-                          className="chip-x"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteImpression(imp.id);
-                          }}
-                        >
-                          ×
-                        </span>
-                      </div>
-                    )
-                  )}
-                  {addingImpressionType === "concern" ? (
-                    <input
-                      className="chip-edit-input"
-                      autoFocus
-                      value={newChipValue}
-                      onChange={(e) => setNewChipValue(e.target.value)}
-                      onBlur={commitAddImpression}
-                      onKeyDown={blurOnEnter}
-                    />
-                  ) : (
-                    <div className="chip add-chip" onClick={() => startAddImpression("concern")}>＋ 追加</div>
-                  )}
-                </div>
-
-                <p className="field-label" style={{ marginTop: "14px" }}>本音</p>
-                {editingHonne ? (
-                  <textarea
-                    className="honne-edit"
-                    autoFocus
-                    value={honne || ""}
-                    onChange={(e) => setHonne(e.target.value)}
-                    onBlur={saveHonne}
-                    onFocus={(e) => {
-                      const len = e.target.value.length;
-                      e.target.setSelectionRange(len, len); // カーソルを文字の最後に移動させる
-                    }}
-                    placeholder="ここだけの本音"
-                  />
-                ) : (
-                  <div className="honne-box" onClick={() => setEditingHonne(true)}>
-                    <span className="honne-text">{honne && honne.trim() ? honne : "ここだけの本音を書いてみましょう"}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="section-block">
-              <div className="block">
-                <p className="section-h">
-                  <svg className="section-icon" viewBox="0 0 24 24">
-                    <circle cx="12" cy="12" r="2.2" fill="var(--ink)" />
-                    <circle cx="12" cy="7" r="3" fill="#8574A3" />
-                    <circle cx="16.5" cy="9.5" r="3" fill="#E8A9A0" />
-                    <circle cx="14.8" cy="15" r="3" fill="#E8A9A0" />
-                    <circle cx="9.2" cy="15" r="3" fill="#E8A9A0" />
-                    <circle cx="7.5" cy="9.5" r="3" fill="#E8A9A0" />
-                  </svg>
-                  選考
-                </p>
-
-                <p className="field-label">選考フロー</p>
-                {editingSelectionFlow ? (
-                  <input
-                    className="form-input"
-                    autoFocus
-                    value={selectionFlowDraft}
-                    onChange={(e) => setSelectionFlowDraft(e.target.value)}
-                    onBlur={saveSelectionFlow}
-                    onKeyDown={blurOnEnter}
-                  />
-                ) : (
-                  <div className="selection-flow-box" onClick={startEditSelectionFlow}>
-                    <p className="selection-flow-text">
-                      {selectedCompany.selection_flow || "記載なし"}
-                    </p>
-                    <p className="selection-flow-source">
-                      {selectedCompany.selection_flow_manually_edited
-                        ? "手動で編集済み"
-                        : "AIが求人票から抽出"}
-                    </p>
-                  </div>
-                )}
-
-                <p className="field-label" style={{ marginTop: "14px" }}>選考ステータス</p>
-                <div className="status-picker">
-                  {statusOptions.map((s) => (
-                    <button
-                      key={s}
-                      className={s === selectedCompany.status ? "status-btn active" : "status-btn"}
-                      onClick={() => updateStatus(selectedCompany.id, s)}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-
-                <p className="field-label" style={{ marginTop: "14px" }}>確認したいこと・選考メモ</p>
-                <div className="chip-row">
-                  {memos.map((memo) =>
-                    editingMemoId === memo.id ? (
-                      <input
-                        key={memo.id}
-                        className="chip-edit-input"
-                        autoFocus
-                        value={editingMemoValue}
-                        onChange={(e) => setEditingMemoValue(e.target.value)}
-                        onBlur={commitEditMemo}
-                        onKeyDown={blurOnEnter}
-                      />
-                    ) : (
-                      <div className="chip removable" key={memo.id} onClick={() => startEditMemo(memo)}>
-                        <span className="chip-text">{memo.content}</span>
-                        <span
-                          className="chip-x"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteMemo(memo.id);
-                          }}
-                        >
-                          ×
-                        </span>
-                      </div>
-                    )
-                  )}
-                  {addingMemo ? (
-                    <input
-                      className="chip-edit-input"
-                      autoFocus
-                      value={newMemoValue}
-                      onChange={(e) => setNewMemoValue(e.target.value)}
-                      onBlur={commitAddMemo}
-                      onKeyDown={blurOnEnter}
-                    />
-                  ) : (
-                    <div className="chip add-chip" onClick={startAddMemo}>＋ 追加</div>
-                  )}
-                </div>
-
-                {aiSuggestions.length > 0 && (
-                  <div className="ai-suggest-box">
-                    <p className="ai-suggest-label">AIからの提案</p>
-                    <div className="chip-row">
-                      {aiSuggestions.map((s) => (
-                        <div className="chip suggest" key={s.id} onClick={() => acceptSuggestion(s)}>
-                          {s.content}
-                          <span className="chip-plus">＋</span>
-                        </div>
                       ))}
                     </div>
                   </div>
-                )}
-              </div>
-            </div>
-
-            <div className="section-block" style={{ marginBottom: "8px" }}>
-              <div className="block" style={{ marginBottom: 0 }}>
-                <p
-                  className="section-h timeline-header"
-                  onClick={() => setShowAllRecords(!showAllRecords)}
-                >
-                  <span>
-                    <svg className="section-icon" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M6 4.5 H16 L18.5 7 V19.5 H6 Z" />
-                      <path d="M16 4.5 V7 H18.5" />
-                      <path d="M9 11 H15 M9 14 H15 M9 17 H12.5" />
-                    </svg>
-                    記録
-                  </span>
-                  <span className="timeline-toggle">
-                    {showAllRecords ? "閉じる ▴" : "すべて見る ▾"}
-                  </span>
-                </p>
-                <ul className="timeline">
-                  {visibleRecords.map((r) => (
-                    <li key={r.id} className={r.category === "status" ? "status" : ""}>
-                      <div className="t-title">{r.title}</div>
-                      {new Date(r.created_at).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" })}
-                      {r.note ? `・${r.note}` : ""}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-
-            <div className="rest-btn" onClick={() => toggleSleeping(selectedCompany)}>
-              <svg className="inline-icon" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M17 12.5 A7 7 0 1 1 10.8 5.2 A5.6 5.6 0 0 0 17 12.5 Z" />
-              </svg>
-              {selectedCompany.is_sleeping ? "眠りから起こす" : "いったん眠らせる"}
-            </div>
-          </div>
-        </div>
-      ) : screen === "plant-new" ? (
-        // ============ ＋植える画面（タブの上に重ねて表示） ============
-        <div className="plant-new-screen">
-          <div className="screen-header">
-            <button className="back-btn" onClick={() => setScreen(null)}>←</button>
-            <span className="screen-title">新しい企業を植える</span>
-          </div>
-
-          {me.isDemo && (
-            <div className="demo-banner">
-              <SproutIcon size={16} />
-              デモで体験中です。個人情報は入力しないでください
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="plant-form">
-            <div className="form-block">
-              <label>会社名 <span className="required-label">必須</span></label>
-              <input
-                className="form-input"
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-                placeholder="例：株式会社アオバ"
-                required
-              />
-            </div>
-            <div className="form-block">
-              <label>求人ページ</label>
-              <input
-                className="form-input"
-                value={jobUrl}
-                onChange={(e) => setJobUrl(e.target.value)}
-                placeholder="URLを貼り付け"
-              />
-            </div>
-            <div className="form-block">
-              <div className="form-label-row">
-                <label>求人情報</label>
-                {me.isDemo && (
-                  <button type="button" className="sample-btn" onClick={fillSampleJob}>
-                    見本の求人票を入れてみる
-                  </button>
-                )}
-              </div>
-              <textarea
-                className="form-textarea"
-                value={jobText}
-                onChange={(e) => setJobText(e.target.value)}
-                placeholder="求人票の本文を貼り付けてください"
-              />
-              <p className="form-hint">
-                Ctrl+Aで全選択すると他社の情報も混ざることがあります。求人本文だけを範囲選択してコピペしてください。
-              </p>
-
-              {/* 求人票と照らし合わせる希望条件を、入力する前に見られるようにする */}
-              <div className="plant-conditions">
-                <div className="plant-conditions-head">
-                  <span>この希望条件と照らし合わせます</span>
-                  <span className="section-link" onClick={() => openConditions("plant-new")}>
-                    {desiredConditions.length > 0 ? "変更する" : "登録する"}
-                  </span>
                 </div>
-                {desiredConditions.length > 0 ? (
-                  <div className="plant-conditions-chips">
-                    {desiredConditions.map((c) => (
-                      <span className="plant-condition-chip" key={c.id}>{c.label}</span>
-                    ))}
+                {selectedCompany.job_url && (
+                  <a className="job-url-link" href={selectedCompany.job_url} target="_blank" rel="noreferrer">
+                    <svg viewBox="0 0 24 24" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                      <path d="M9 15 L15 9" />
+                      <path d="M10 7 L12 5 A3.5 3.5 0 0 1 17.5 9.5 L15.5 11.5" />
+                      <path d="M14 17 L12 19 A3.5 3.5 0 0 1 6.5 14.5 L8.5 12.5" />
+                    </svg>
+                    求人ページ
+                  </a>
+                )}
+              </div>
+
+              <div className="detail-plant">
+                <PottedPlant company={selectedCompany} width={120} />
+                <p className="stage-caption">
+                  {STAGE_CAPTION[selectedCompany.growth_stage] || STAGE_CAPTION.seed}
+                </p>
+                {editingShortMemo ? (
+                  <div className="short-memo-edit-wrap">
+                    <input
+                      className="short-memo-input"
+                      autoFocus
+                      maxLength={SHORT_MEMO_MAX}
+                      value={shortMemoDraft}
+                      onChange={(e) => setShortMemoDraft(e.target.value)}
+                      onBlur={saveShortMemo}
+                      onKeyDown={blurOnEnter}
+                      placeholder="ひとことメモ"
+                    />
+                    <span className="short-memo-count">
+                      {shortMemoDraft.length}/{SHORT_MEMO_MAX}
+                    </span>
                   </div>
                 ) : (
-                  <p className="plant-conditions-empty">
-                    まだ登録されていません。登録しておくと、植えたあとにAIが求人票と照らし合わせます。
-                  </p>
+                  <div className="short-memo-box" onClick={startEditShortMemo}>
+                    {selectedCompany.short_memo ? (
+                      <span className="short-memo-text">{selectedCompany.short_memo}</span>
+                    ) : (
+                      <span className="short-memo-placeholder">＋ ひとことメモ</span>
+                    )}
+                  </div>
                 )}
-              </div>
-            </div>
-
-            <div className="form-block">
-              <label>この会社、今どんな感じ？</label>
-              <div className="form-chip-row">
-                {moodOptions.map((label) => (
-                  <div
-                    key={label}
-                    className={moodChip === label ? "form-chip selected" : "form-chip"}
-                    onClick={() => setMoodChip(moodChip === label ? null : label)}
-                  >
-                    {label}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="form-block">
-              <label>気になった理由は？</label>
-              <div className="form-chip-row">
-                {reasonOptions.map((label) => (
-                  <div
-                    key={label}
-                    className={reasonChips.includes(label) ? "form-chip selected" : "form-chip"}
-                    onClick={() => toggleReasonChip(label)}
-                  >
-                    {label}
-                  </div>
-                ))}
-              </div>
-              <textarea
-                className="form-textarea"
-                style={{ marginTop: "8px" }}
-                value={freeReason}
-                onChange={(e) => setFreeReason(e.target.value)}
-                placeholder="自由に書いてもOK"
-              />
-            </div>
-
-            <button type="submit" className="plant-submit-btn">
-              <svg className="submit-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 20 V11" />
-                <path d="M12 14 C7 14 6 10 6 7 C10 7 12 9.5 12 14 Z" />
-                <path d="M12 12 C17 12 18 8.5 18 6 C14 6 12 8 12 12 Z" />
-              </svg>
-              植える
-            </button>
-          </form>
-        </div>
-      ) : screen === "desired-conditions" ? (
-        // ============ 希望条件の管理画面 ============
-        <div className="desired-conditions-screen">
-          <div className="screen-header">
-            {/* 企業詳細や＋植える画面から来た時は、元の画面に戻る */}
-            <button className="back-btn" onClick={() => setScreen(conditionsReturnTo)}>←</button>
-            <span className="screen-title">希望条件</span>
-          </div>
-
-          <p className="settings-placeholder">
-            転職先に求める条件です。ここに登録した条件が、希望条件との照合で使われます。ハンドル（≡）を掴んで、ドラッグで並び替えられます。
-          </p>
-
-          <div className="block">
-            <div className="reorder-list">
-              {desiredConditions.map((c) => (
-                <div
-                  key={c.id}
-                  data-condition-id={c.id}
-                  className={[
-                    "reorder-row",
-                    c.id === draggingId ? "dragging" : "",
-                    c.id === editingConditionId ? "editing" : "",
-                  ].join(" ").trim()}
+                <button
+                  className={selectedCompany.is_favorite ? "fav-btn active" : "fav-btn"}
+                  onClick={(e) => toggleFavorite(selectedCompany, e)}
                 >
-                  <span
-                    className="drag-handle"
-                    onPointerDown={(e) => {
-                      e.currentTarget.setPointerCapture(e.pointerId);
-                      setDraggingId(c.id);
-                    }}
-                    onPointerMove={(e) => {
-                      if (draggingId === null) return;
-                      const el = document.elementFromPoint(e.clientX, e.clientY);
-                      const rowEl = el && el.closest("[data-condition-id]");
-                      if (rowEl) {
-                        moveCondition(draggingId, Number(rowEl.getAttribute("data-condition-id")));
-                      }
-                    }}
-                    onPointerUp={saveConditionOrder}
-                    onPointerCancel={saveConditionOrder}
-                  >
-                    ≡
-                  </span>
-                  {editingConditionId === c.id ? (
-                    <input
-                      className="chip-edit-input reorder-edit-input"
-                      autoFocus
-                      value={editingConditionValue}
-                      onChange={(e) => setEditingConditionValue(e.target.value)}
-                      onBlur={commitEditCondition}
-                      onKeyDown={blurOnEnter}
-                    />
-                  ) : (
-                    <span className="reorder-label" onClick={() => startEditCondition(c)}>
-                      {c.label}
-                    </span>
-                  )}
-                  <span
-                    className="chip-x"
-                    onClick={() => deleteCondition(c.id)}
-                  >
-                    ×
-                  </span>
-                </div>
-              ))}
-            </div>
+                  <svg viewBox="0 0 24 24">
+                    <path d="M12 20 C6 15 3 11.5 3 8 C3 5 5.2 3 8 3 C10 3 11.3 4.3 12 5.5 C12.7 4.3 14 3 16 3 C18.8 3 21 5 21 8 C21 11.5 18 15 12 20 Z" />
+                  </svg>
+                </button>
+              </div>
 
-            <div className="chip-row" style={{ marginTop: "10px" }}>
-              {addingCondition ? (
-                <input
-                  className="chip-edit-input"
-                  autoFocus
-                  value={newConditionValue}
-                  onChange={(e) => setNewConditionValue(e.target.value)}
-                  onBlur={commitAddCondition}
-                  onKeyDown={blurOnEnter}
-                />
-              ) : (
-                <div className="chip add-chip" onClick={startAddCondition}>＋ 追加</div>
-              )}
-            </div>
-          </div>
-        </div>
-      ) : screen === "confirm-delete" ? (
-        // ============ データ削除の確認画面 ============
-        <div className="confirm-delete-screen">
-          <div className="screen-header">
-            <button className="back-btn" onClick={() => setScreen(null)}>←</button>
-            <span className="screen-title">データを削除</span>
-          </div>
+              {/* まだ書いていない記録を、問いかけの形で1つだけ案内する（花が咲いたら出さない） */}
+              <NextStepCard company={selectedCompany} onAction={goToKind} />
 
-          <div className="confirm-delete-box">
-            <p className="confirm-delete-title">本当に削除しますか？</p>
-            <p className="confirm-delete-text">
-              企業の記録・いいな気になる・本音・メモ・希望条件など、すべてのデータが削除されます。この操作は取り消せません。先に「データをエクスポート」でバックアップを取っておくことをおすすめします。
-            </p>
-            <button className="confirm-delete-btn" onClick={deleteAllData}>
-              すべて削除する
-            </button>
-            <button className="confirm-cancel-btn" onClick={() => setScreen(null)}>
-              キャンセル
-            </button>
-          </div>
-        </div>
-      ) : screen === "about" ? (
-        // ============ このアプリについて ============
-        <div className="about-screen">
-          <div className="screen-header">
-            <button className="back-btn" onClick={() => setScreen(null)}>←</button>
-            <span className="screen-title">このアプリについて</span>
-          </div>
+              <div className="detail-body">
 
-          <div className="about-hero">
-            <SproutIcon size={60} />
-            <p className="about-name">めばえ</p>
-            <p className="about-tagline">転職活動を、庭で植物を育てるように</p>
-          </div>
-
-          <div className="block">
-            <p className="field-label">コンセプト</p>
-            <p className="about-text">
-              応募した企業を1本の植物に見立てて記録するアプリです。<br />
-              求人票の照合・いいな気になる・本音・選考メモなど、企業について知ったことの数だけ、植物が育っていきます。選考結果の良し悪しではなく、「その企業とどれだけ向き合えたか」を大事にする設計にしています。
-            </p>
-          </div>
-
-          <div className="block">
-            <p className="field-label">主な機能</p>
-            <p className="about-text">
-              ・求人票とAIによる希望条件の自動照合<br />
-              ・選考フローの自動抽出<br />
-              ・AIによる選考メモの提案<br />
-              ・企業ごとの記録タイムライン<br />
-              ・ダークモード
-            </p>
-          </div>
-
-          <div className="block" style={{ marginBottom: 0 }}>
-            <p className="field-label">使用技術</p>
-            <p className="about-text">
-              React ・ Cloudflare Workers ・ Cloudflare D1 ・ Gemini API
-            </p>
-          </div>
-
-          <p className="about-version">めばえ v1.0.0（個人開発）</p>
-        </div>
-      ) : screen === "post-plant-prompt" && postPlantCompany ? (
-        // ============ 植えた直後の画面（種が鉢に着地 → 求人票があれば、照合の提案） ============
-        <div className="post-plant-screen">
-          <div className="post-plant-box">
-            {/* key を付けて、植えるたびにアニメーションを最初から再生する */}
-            <PlantingScene
-              key={postPlantCompany.id}
-              company={{ id: postPlantCompany.id }}
-              sprouts={postPlantCompany.sprouted}
-            />
-            <div className="post-plant-reveal">
-              <p className="post-plant-title">{postPlantCompany.company_name}を植えました</p>
-              {postPlantCompany.sprouted && (
-                <p className="post-plant-sprouted">さっそく芽が出ました</p>
-              )}
-            </div>
-            <div className={postPlantCompany.sprouted ? "post-plant-reveal late" : "post-plant-reveal"}>
-              {postPlantCompany.hasJobText ? (
-                <>
-                  <p className="post-plant-text">求人票と希望条件を照らし合わせてみますか？</p>
-                  <div className="post-plant-buttons">
-                    <button className="post-plant-go-btn" onClick={startRematchFromPrompt}>
-                      照合してみる
-                    </button>
+                <div className="section-block">
+                  <div className="block">
+                    <p className="section-h">
+                      <svg className="section-icon" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 20 V11" />
+                        <path d="M12 14 C7 14 6 10 6 7 C10 7 12 9.5 12 14 Z" />
+                        <path d="M12 12 C17 12 18 8.5 18 6 C14 6 12 8 12 12 Z" />
+                      </svg>
+                      この会社について
+                    </p>
+                    <p className="field-label">
+                      希望条件との照合<span className="field-label-sub">（タップで直せます）</span>
+                    </p>
+                    <table className="req-table">
+                      <tbody>
+                        {requirementMatches.map((m) => (
+                          <tr key={m.condition_id}>
+                            <td>{m.label}</td>
+                            <td
+                              className={`mark ${m.mark} editable`}
+                              onClick={() => cycleMark(m)}
+                            >
+                              {m.mark === "yes" ? "○" : m.mark === "mid" ? "△" : "×"}{" "}
+                              <span className={m.manually_edited ? "mark-note dimmed" : "mark-note"}>
+                                {m.note}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                     <button
-                      className="post-plant-later-btn"
-                      onClick={() => {
-                        setPostPlantCompany(null);
-                        setScreen(null);
-                        setActiveTab("home");
-                      }}
+                      className="rematch-btn"
+                      onClick={saveJobTextAndRematch}
+                      disabled={isRematching || (me.isDemo && me.rematchRemaining === 0)}
                     >
-                      あとで
+                      {me.isDemo && me.rematchRemaining === 0 && !isRematching ? (
+                        "デモでのAI照合は上限に達しました"
+                      ) : isRematching ? (
+                        <>
+                          <span className="spinner"></span>
+                          照合中...
+                        </>
+                      ) : requirementMatches.length === 0 ? (
+                        "AIに求人内容と希望条件を照らし合わせてもらう"
+                      ) : (
+                        "AIにもう一度照らし合わせてもらう"
+                      )}
                     </button>
+                    {me.isDemo && !isRematching && (
+                      <p className="demo-limit-note">
+                        AI照合（デモでは{me.rematchLimit}回まで・残り{me.rematchRemaining ?? 0}回）
+                      </p>
+                    )}
+                    {isRematching && (
+                      <p className="rematch-hint">
+                        求人票を読んで、選考フローや質問の候補もまとめて考えています
+                      </p>
+                    )}
+                    {rematchErrorInfo && !isRematching && (
+                      <div className="rematch-error">
+                        <div className="rematch-error-body">
+                          <p className="rematch-error-title">{rematchErrorInfo.title}</p>
+                          <p className="rematch-error-text">{rematchErrorInfo.text}</p>
+                          {rematchError.code === "no_conditions" && (
+                            <button
+                              className="rematch-error-action"
+                              onClick={() => openConditions("detail")}
+                            >
+                              希望条件を登録する →
+                            </button>
+                          )}
+                          {rematchError.code === "no_job_text" && (
+                            <button
+                              className="rematch-error-action"
+                              onClick={() => setShowJobTextEditor(true)}
+                            >
+                              求人票の本文を貼り付ける ↓
+                            </button>
+                          )}
+                        </div>
+                        <span className="rematch-error-close" onClick={() => setRematchError(null)}>×</span>
+                      </div>
+                    )}
+
+                    <div className="job-text-block">
+                      <p
+                        className="field-label job-text-toggle"
+                        onClick={() => setShowJobTextEditor(!showJobTextEditor)}
+                      >
+                        <span>求人票の本文・URL</span>
+                        <span className="job-text-chevron">
+                          {showJobTextEditor ? "閉じる ▴" : "編集する ▾"}
+                        </span>
+                      </p>
+                      {showJobTextEditor && (
+                        <div className="job-text-editor">
+                          <textarea
+                            className="form-textarea job-textarea"
+                            value={jobTextDraft}
+                            onChange={(e) => setJobTextDraft(e.target.value)}
+                          />
+                          <p className="job-text-warning">
+                            貼り直しただけでは上の照合結果は変わりません。反映するには上部の「AIにもう一度照らし合わせてもらう」ボタンを押してください
+                          </p>
+
+                          {/* 求人ページのURL：タップすると、その場で書き換えられる（本文と同じ開閉の中に入れている） */}
+                          <p className="field-label" style={{ marginTop: "14px" }}>求人ページのURL</p>
+                          {editingJobUrl ? (
+                            <input
+                              className="form-input"
+                              type="url"
+                              inputMode="url"
+                              autoFocus
+                              value={jobUrlDraft}
+                              onChange={(e) => setJobUrlDraft(e.target.value)}
+                              onBlur={saveJobUrl}
+                              onKeyDown={blurOnEnter}
+                              placeholder="https://..."
+                            />
+                          ) : (
+                            <div className="job-url-box" onClick={startEditJobUrl}>
+                              {selectedCompany.job_url ? (
+                                <span className="job-url-text">{selectedCompany.job_url}</span>
+                              ) : (
+                                <span className="job-url-placeholder">＋ URLを追加</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </>
-              ) : (
-                <div className="post-plant-buttons">
-                  <button
-                    className="post-plant-go-btn"
-                    onClick={() => {
-                      setPostPlantCompany(null);
-                      setScreen(null);
-                      setActiveTab("home");
-                    }}
-                  >
-                    庭を見る
-                  </button>
                 </div>
-              )}
+
+                <div className="section-block">
+                  <div className="block">
+                    <p className="section-h">
+                      <svg className="section-icon" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M5 13 C5 8 8.5 5 13 5 C17 5 20 7.8 20 11.5 C20 15.2 17 18 13 18 C11.8 18 10.7 17.8 9.7 17.4 L6 19 L7 15.8 C5.7 14.8 5 13.5 5 13 Z" />
+                      </svg>
+                      私が感じたこと
+                    </p>
+
+                    <p className="field-label">いいなと思ったこと</p>
+                    <div className="chip-row">
+                      {impressions.filter((imp) => imp.type === "good").map((imp) =>
+                        editingImpressionId === imp.id ? (
+                          <input
+                            key={imp.id}
+                            className="chip-edit-input"
+                            autoFocus
+                            value={editingImpressionValue}
+                            onChange={(e) => setEditingImpressionValue(e.target.value)}
+                            onBlur={commitEditImpression}
+                            onKeyDown={blurOnEnter}
+                          />
+                        ) : (
+                          <div className="chip removable" key={imp.id} onClick={() => startEditImpression(imp)}>
+                            <span className="chip-text">{imp.content}</span>
+                            <span
+                              className="chip-x"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteImpression(imp.id);
+                              }}
+                            >
+                              ×
+                            </span>
+                          </div>
+                        )
+                      )}
+                      {addingImpressionType === "good" ? (
+                        <input
+                          className="chip-edit-input"
+                          autoFocus
+                          value={newChipValue}
+                          onChange={(e) => setNewChipValue(e.target.value)}
+                          onBlur={commitAddImpression}
+                          onKeyDown={blurOnEnter}
+                        />
+                      ) : (
+                        <div className="chip add-chip" onClick={() => startAddImpression("good")}>＋ 追加</div>
+                      )}
+                    </div>
+
+                    <p className="field-label" style={{ marginTop: "14px" }}>気になること</p>
+                    <div className="chip-row">
+                      {impressions.filter((imp) => imp.type === "concern").map((imp) =>
+                        editingImpressionId === imp.id ? (
+                          <input
+                            key={imp.id}
+                            className="chip-edit-input"
+                            autoFocus
+                            value={editingImpressionValue}
+                            onChange={(e) => setEditingImpressionValue(e.target.value)}
+                            onBlur={commitEditImpression}
+                            onKeyDown={blurOnEnter}
+                          />
+                        ) : (
+                          <div className="chip removable" key={imp.id} onClick={() => startEditImpression(imp)}>
+                            <span className="chip-text">{imp.content}</span>
+                            <span
+                              className="chip-x"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteImpression(imp.id);
+                              }}
+                            >
+                              ×
+                            </span>
+                          </div>
+                        )
+                      )}
+                      {addingImpressionType === "concern" ? (
+                        <input
+                          className="chip-edit-input"
+                          autoFocus
+                          value={newChipValue}
+                          onChange={(e) => setNewChipValue(e.target.value)}
+                          onBlur={commitAddImpression}
+                          onKeyDown={blurOnEnter}
+                        />
+                      ) : (
+                        <div className="chip add-chip" onClick={() => startAddImpression("concern")}>＋ 追加</div>
+                      )}
+                    </div>
+
+                    <p className="field-label" style={{ marginTop: "14px" }}>本音</p>
+                    {editingHonne ? (
+                      <textarea
+                        className="honne-edit"
+                        autoFocus
+                        value={honne || ""}
+                        onChange={(e) => setHonne(e.target.value)}
+                        onBlur={saveHonne}
+                        onFocus={(e) => {
+                          const len = e.target.value.length;
+                          e.target.setSelectionRange(len, len); // カーソルを文字の最後に移動させる
+                        }}
+                        placeholder="ここだけの本音"
+                      />
+                    ) : (
+                      <div className="honne-box" onClick={() => setEditingHonne(true)}>
+                        <span className="honne-text">{honne && honne.trim() ? honne : "ここだけの本音を書いてみましょう"}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="section-block">
+                  <div className="block">
+                    <p className="section-h">
+                      <svg className="section-icon" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="2.2" fill="var(--ink)" />
+                        <circle cx="12" cy="7" r="3" fill="#8574A3" />
+                        <circle cx="16.5" cy="9.5" r="3" fill="#E8A9A0" />
+                        <circle cx="14.8" cy="15" r="3" fill="#E8A9A0" />
+                        <circle cx="9.2" cy="15" r="3" fill="#E8A9A0" />
+                        <circle cx="7.5" cy="9.5" r="3" fill="#E8A9A0" />
+                      </svg>
+                      選考
+                    </p>
+
+                    <p className="field-label">選考フロー</p>
+                    {editingSelectionFlow ? (
+                      <>
+                        {/* 複数行で書ける。Enterは改行、欄の外をタップすると保存 */}
+                        <AutoTextarea
+                          className="flow-edit"
+                          autoFocus
+                          value={selectionFlowDraft}
+                          onChange={(e) => setSelectionFlowDraft(e.target.value)}
+                          onBlur={saveSelectionFlow}
+                          placeholder={"例：書類選考 → 一次面接 → 最終面接"}
+                        />
+                        <p className="edit-hint">
+                          欄の外をタップすると保存します。空にして保存すると、次のAI照合で求人票から読み取り直します
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="selection-flow-box" onClick={startEditSelectionFlow}>
+                          <p className={flowFolded && flowIsLong ? "selection-flow-text folded" : "selection-flow-text"}>
+                            {selectedCompany.selection_flow || "記載なし"}
+                          </p>
+                          <p className="selection-flow-source">
+                            {!selectedCompany.selection_flow
+                              ? "タップして書けます（AI照合でも自動で入ります）"
+                              : selectedCompany.selection_flow_manually_edited
+                                ? "手動で編集済み（AI照合しても、このまま残ります）"
+                                : "AIが求人票から抽出"}
+                          </p>
+                        </div>
+                        {/* 長い時だけ、たたむ／ひらくのボタンを出す */}
+                        {flowIsLong && (
+                          <button className="fold-btn" onClick={() => setFlowFolded(!flowFolded)}>
+                            {flowFolded ? "すべて見る ▾" : "たたむ ▴"}
+                          </button>
+                        )}
+                      </>
+                    )}
+
+                    <p className="field-label" style={{ marginTop: "14px" }}>選考ステータス</p>
+                    <div className="status-picker">
+                      {statusOptions.map((s) => (
+                        <button
+                          key={s}
+                          className={s === selectedCompany.status ? "status-btn active" : "status-btn"}
+                          onClick={() => updateStatus(selectedCompany.id, s)}
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+
+                    <p className="field-label" style={{ marginTop: "14px" }}>確認したいこと・選考メモ</p>
+                    {/* メモは1件ずつカードで並べる（長い文は枠の幅で折り返し、書いた改行もそのまま表示） */}
+                    <div className="memo-list">
+                      {memos.map((memo) =>
+                        editingMemoId === memo.id ? (
+                          <AutoTextarea
+                            key={memo.id}
+                            className="memo-edit"
+                            autoFocus
+                            value={editingMemoValue}
+                            onChange={(e) => setEditingMemoValue(e.target.value)}
+                            onBlur={commitEditMemo}
+                          />
+                        ) : (
+                          <div className="memo-card" key={memo.id} onClick={() => startEditMemo(memo)}>
+                            <span className="memo-card-text">{memo.content}</span>
+                            <span
+                              className="memo-card-x"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteMemo(memo.id);
+                              }}
+                            >
+                              ×
+                            </span>
+                          </div>
+                        )
+                      )}
+                      {addingMemo ? (
+                        <>
+                          <AutoTextarea
+                            className="memo-edit"
+                            autoFocus
+                            value={newMemoValue}
+                            onChange={(e) => setNewMemoValue(e.target.value)}
+                            onBlur={commitAddMemo}
+                            placeholder="面接で聞きたいこと、選考で気づいたこと など"
+                          />
+                          <p className="edit-hint">Enterで改行できます。欄の外をタップすると保存します</p>
+                        </>
+                      ) : (
+                        <div className="memo-add" onClick={startAddMemo}>＋ メモを追加</div>
+                      )}
+                    </div>
+
+                    {aiSuggestions.length > 0 && (
+                      <div className="ai-suggest-box">
+                        <p className="ai-suggest-label">AIからの提案</p>
+                        <div className="chip-row">
+                          {aiSuggestions.map((s) => (
+                            <div className="chip suggest" key={s.id} onClick={() => acceptSuggestion(s)}>
+                              {s.content}
+                              <span className="chip-plus">＋</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="section-block" style={{ marginBottom: "8px" }}>
+                  <div className="block" style={{ marginBottom: 0 }}>
+                    <p
+                      className="section-h timeline-header"
+                      onClick={() => setShowAllRecords(!showAllRecords)}
+                    >
+                      <span>
+                        <svg className="section-icon" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M6 4.5 H16 L18.5 7 V19.5 H6 Z" />
+                          <path d="M16 4.5 V7 H18.5" />
+                          <path d="M9 11 H15 M9 14 H15 M9 17 H12.5" />
+                        </svg>
+                        記録
+                      </span>
+                      <span className="timeline-toggle">
+                        {showAllRecords ? "閉じる ▴" : "すべて見る ▾"}
+                      </span>
+                    </p>
+                    <ul className="timeline">
+                      {visibleRecords.map((r) => (
+                        <li key={r.id} className={r.category === "status" ? "status" : ""}>
+                          <div className="t-title">{r.title}</div>
+                          {new Date(r.created_at).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" })}
+                          {r.note ? `・${r.note}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="rest-btn" onClick={() => toggleSleeping(selectedCompany)}>
+                  <svg className="inline-icon" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17 12.5 A7 7 0 1 1 10.8 5.2 A5.6 5.6 0 0 0 17 12.5 Z" />
+                  </svg>
+                  {selectedCompany.is_sleeping ? "眠りから起こす" : "いったん眠らせる"}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      ) : (
-        // ============ タブ表示（ホーム／企業一覧／記録／設定） ============
-        <>
-          {activeTab === "home" && (
-            <div className="home-screen">
+          ) : screen === "plant-new" ? (
+            // ============ ＋植える画面（タブの上に重ねて表示） ============
+            <div className="plant-new-screen">
+              <div className="screen-header">
+                <button className="back-btn" onClick={() => setScreen(null)}>←</button>
+                <span className="screen-title">新しい企業を植える</span>
+              </div>
+
               {me.isDemo && (
                 <div className="demo-banner">
                   <SproutIcon size={16} />
                   デモで体験中です。個人情報は入力しないでください
                 </div>
               )}
-              <div className="page-header">
-                <div>
-                  <p className="eyebrow">おかえりなさい</p>
-                  <h1 className="page-title">今日の庭</h1>
+
+              <form onSubmit={handleSubmit} className="plant-form">
+                <div className="form-block">
+                  <label>会社名 <span className="required-label">必須</span></label>
+                  <input
+                    className="form-input"
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    placeholder="例：株式会社アオバ"
+                    required
+                  />
                 </div>
-                <button className="add-btn" onClick={() => setScreen("plant-new")}>
-                  <svg viewBox="0 0 24 24" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" fill="none">
-                    <path d="M12 5 V19 M5 12 H19" />
+                <div className="form-block">
+                  <label>求人ページ</label>
+                  <input
+                    className="form-input"
+                    value={jobUrl}
+                    onChange={(e) => setJobUrl(e.target.value)}
+                    placeholder="URLを貼り付け"
+                  />
+                </div>
+                <div className="form-block">
+                  <div className="form-label-row">
+                    <label>求人情報</label>
+                    {me.isDemo && (
+                      <button type="button" className="sample-btn" onClick={fillSampleJob}>
+                        見本の求人票を入れてみる
+                      </button>
+                    )}
+                  </div>
+                  <textarea
+                    className="form-textarea job-textarea"
+                    value={jobText}
+                    onChange={(e) => setJobText(e.target.value)}
+                    placeholder="求人票の本文を貼り付けてください"
+                  />
+                  <p className="form-hint">
+                    Ctrl+Aで全選択すると他社の情報も混ざることがあります。求人本文だけを範囲選択してコピペしてください。
+                  </p>
+
+                  {/* 求人票と照らし合わせる希望条件を、入力する前に見られるようにする */}
+                  <div className="plant-conditions">
+                    <div className="plant-conditions-head">
+                      <span>この希望条件と照らし合わせます</span>
+                      <span className="section-link" onClick={() => openConditions("plant-new")}>
+                        {desiredConditions.length > 0 ? "変更する" : "登録する"}
+                      </span>
+                    </div>
+                    {desiredConditions.length > 0 ? (
+                      <div className="plant-conditions-chips">
+                        {desiredConditions.map((c) => (
+                          <span className="plant-condition-chip" key={c.id}>{c.label}</span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="plant-conditions-empty">
+                        まだ登録されていません。登録しておくと、植えたあとにAIが求人票と照らし合わせます。
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="form-block">
+                  <label>この会社、今どんな感じ？</label>
+                  <div className="form-chip-row">
+                    {moodOptions.map((label) => (
+                      <div
+                        key={label}
+                        className={moodChip === label ? "form-chip selected" : "form-chip"}
+                        onClick={() => setMoodChip(moodChip === label ? null : label)}
+                      >
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="form-block">
+                  <label>気になった理由は？</label>
+                  <div className="form-chip-row">
+                    {reasonOptions.map((label) => (
+                      <div
+                        key={label}
+                        className={reasonChips.includes(label) ? "form-chip selected" : "form-chip"}
+                        onClick={() => toggleReasonChip(label)}
+                      >
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+                  <textarea
+                    className="form-textarea"
+                    style={{ marginTop: "8px" }}
+                    value={freeReason}
+                    onChange={(e) => setFreeReason(e.target.value)}
+                    placeholder="自由に書いてもOK"
+                  />
+                </div>
+
+                <button type="submit" className="plant-submit-btn">
+                  <svg className="submit-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 20 V11" />
+                    <path d="M12 14 C7 14 6 10 6 7 C10 7 12 9.5 12 14 Z" />
+                    <path d="M12 12 C17 12 18 8.5 18 6 C14 6 12 8 12 12 Z" />
                   </svg>
                   植える
                 </button>
+              </form>
+            </div>
+          ) : screen === "desired-conditions" ? (
+            // ============ 希望条件の管理画面 ============
+            <div className="desired-conditions-screen">
+              <div className="screen-header">
+                {/* 企業詳細や＋植える画面から来た時は、元の画面に戻る */}
+                <button className="back-btn" onClick={() => setScreen(conditionsReturnTo)}>←</button>
+                <span className="screen-title">希望条件</span>
               </div>
 
-              {/* 庭：眠らせていない企業の鉢植えを並べる。鉢をタップすると、その企業の詳細を開く。
-                  デモの人には、時間帯（空の色）を切り替えるスライダーも出す */}
-              <Garden
-                companies={companies.filter((c) => !c.is_sleeping)}
-                onSelect={openDetail}
-                showTimeSlider={me.isDemo}
-              />
+              <p className="settings-placeholder">
+                転職先に求める条件です。ここに登録した条件が、希望条件との照合で使われます。ハンドル（≡）を掴んで、ドラッグで並び替えられます。
+              </p>
 
-              {latestRecordCompany && (
-                <>
-                  <div className="section-label">
-                    <span>最近、気持ちが動いた企業</span>
-                  </div>
-                  <div
-                    className="plant-row"
-                    onClick={() => openDetail(latestRecordCompany)}
-                  >
-                    <span className="mini-plant"><PlantIcon company={latestRecordCompany} size={30} /></span>
-                    <div className="row-main">
-                      <div className="row-name">{latestRecordCompany.company_name}</div>
-                      <div className="row-status">
-                        {latestRecord.title}
-                        {latestRecord.note ? `・${latestRecord.note}` : ""}
-                      </div>
+              <div className="block">
+                <div className="reorder-list">
+                  {desiredConditions.map((c) => (
+                    <div
+                      key={c.id}
+                      data-condition-id={c.id}
+                      className={[
+                        "reorder-row",
+                        c.id === draggingId ? "dragging" : "",
+                        c.id === editingConditionId ? "editing" : "",
+                      ].join(" ").trim()}
+                    >
+                      <span
+                        className="drag-handle"
+                        onPointerDown={(e) => {
+                          e.currentTarget.setPointerCapture(e.pointerId);
+                          setDraggingId(c.id);
+                        }}
+                        onPointerMove={(e) => {
+                          if (draggingId === null) return;
+                          const el = document.elementFromPoint(e.clientX, e.clientY);
+                          const rowEl = el && el.closest("[data-condition-id]");
+                          if (rowEl) {
+                            moveCondition(draggingId, Number(rowEl.getAttribute("data-condition-id")));
+                          }
+                        }}
+                        onPointerUp={saveConditionOrder}
+                        onPointerCancel={saveConditionOrder}
+                      >
+                        ≡
+                      </span>
+                      {editingConditionId === c.id ? (
+                        <input
+                          className="chip-edit-input reorder-edit-input"
+                          autoFocus
+                          value={editingConditionValue}
+                          onChange={(e) => setEditingConditionValue(e.target.value)}
+                          onBlur={commitEditCondition}
+                          onKeyDown={blurOnEnter}
+                        />
+                      ) : (
+                        <span className="reorder-label" onClick={() => startEditCondition(c)}>
+                          {c.label}
+                        </span>
+                      )}
+                      <span
+                        className="chip-x"
+                        onClick={() => deleteCondition(c.id)}
+                      >
+                        ×
+                      </span>
                     </div>
+                  ))}
+                </div>
+
+                <div className="chip-row" style={{ marginTop: "10px" }}>
+                  {addingCondition ? (
+                    <input
+                      className="chip-edit-input"
+                      autoFocus
+                      value={newConditionValue}
+                      onChange={(e) => setNewConditionValue(e.target.value)}
+                      onBlur={commitAddCondition}
+                      onKeyDown={blurOnEnter}
+                    />
+                  ) : (
+                    <div className="chip add-chip" onClick={startAddCondition}>＋ 追加</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : screen === "confirm-delete" ? (
+            // ============ データ削除の確認画面 ============
+            <div className="confirm-delete-screen">
+              <div className="screen-header">
+                <button className="back-btn" onClick={() => setScreen(null)}>←</button>
+                <span className="screen-title">データを削除</span>
+              </div>
+
+              <div className="confirm-delete-box">
+                <p className="confirm-delete-title">本当に削除しますか？</p>
+                <p className="confirm-delete-text">
+                  企業の記録・いいな気になる・本音・メモ・希望条件など、すべてのデータが削除されます。この操作は取り消せません。先に「データをエクスポート」でバックアップを取っておくことをおすすめします。
+                </p>
+                <button className="confirm-delete-btn" onClick={deleteAllData}>
+                  すべて削除する
+                </button>
+                <button className="confirm-cancel-btn" onClick={() => setScreen(null)}>
+                  キャンセル
+                </button>
+              </div>
+            </div>
+          ) : screen === "about" ? (
+            // ============ このアプリについて ============
+            <div className="about-screen">
+              <div className="screen-header">
+                <button className="back-btn" onClick={() => setScreen(null)}>←</button>
+                <span className="screen-title">このアプリについて</span>
+              </div>
+
+              <div className="about-hero">
+                <SproutIcon size={60} />
+                <p className="about-name">めばえ</p>
+                <p className="about-tagline">転職活動を、庭で植物を育てるように</p>
+              </div>
+
+              <div className="block">
+                <p className="field-label">コンセプト</p>
+                <p className="about-text">
+                  応募した企業を1本の植物に見立てて記録するアプリです。<br />
+                  求人票の照合・いいな気になる・本音・選考メモなど、企業について知ったことの数だけ、植物が育っていきます。選考結果の良し悪しではなく、「その企業とどれだけ向き合えたか」を大事にする設計にしています。
+                </p>
+              </div>
+
+              <div className="block">
+                <p className="field-label">主な機能</p>
+                <p className="about-text">
+                  ・求人票とAIによる希望条件の自動照合<br />
+                  ・選考フローの自動抽出<br />
+                  ・AIによる選考メモの提案<br />
+                  ・企業ごとの記録タイムライン<br />
+                  ・ダークモード
+                </p>
+              </div>
+
+              <div className="block" style={{ marginBottom: 0 }}>
+                <p className="field-label">使用技術</p>
+                <p className="about-text">
+                  React ・ Cloudflare Workers ・ Cloudflare D1 ・ Gemini API
+                </p>
+              </div>
+
+              <p className="about-version">めばえ v1.0.0（個人開発）</p>
+            </div>
+          ) : screen === "post-plant-prompt" && postPlantCompany ? (
+            // ============ 植えた直後の画面（種が鉢に着地 → 求人票があれば、照合の提案） ============
+            <div className="post-plant-screen">
+              <div className="post-plant-box">
+                {/* key を付けて、植えるたびにアニメーションを最初から再生する */}
+                <PlantingScene
+                  key={postPlantCompany.id}
+                  company={{ id: postPlantCompany.id }}
+                  sprouts={postPlantCompany.sprouted}
+                />
+                <div className="post-plant-reveal">
+                  <p className="post-plant-title">{postPlantCompany.company_name}を植えました</p>
+                  {postPlantCompany.sprouted && (
+                    <p className="post-plant-sprouted">さっそく芽が出ました</p>
+                  )}
+                </div>
+                <div className={postPlantCompany.sprouted ? "post-plant-reveal late" : "post-plant-reveal"}>
+                  {postPlantCompany.hasJobText ? (
+                    <>
+                      <p className="post-plant-text">求人票と希望条件を照らし合わせてみますか？</p>
+                      <div className="post-plant-buttons">
+                        <button className="post-plant-go-btn" onClick={startRematchFromPrompt}>
+                          照合してみる
+                        </button>
+                        <button
+                          className="post-plant-later-btn"
+                          onClick={() => {
+                            setPostPlantCompany(null);
+                            setScreen(null);
+                            setActiveTab("home");
+                          }}
+                        >
+                          あとで
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="post-plant-buttons">
+                      <button
+                        className="post-plant-go-btn"
+                        onClick={() => {
+                          setPostPlantCompany(null);
+                          setScreen(null);
+                          setActiveTab("home");
+                        }}
+                      >
+                        庭を見る
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            // ============ タブ表示（ホーム／企業一覧／記録／設定） ============
+            <>
+              {activeTab === "home" && (
+                <div className="home-screen">
+                  {me.isDemo && (
+                    <div className="demo-banner">
+                      <SproutIcon size={16} />
+                      デモで体験中です。個人情報は入力しないでください
+                    </div>
+                  )}
+                  <div className="page-header">
+                    <div>
+                      <p className="eyebrow">おかえりなさい</p>
+                      <h1 className="page-title">今日の庭</h1>
+                    </div>
+                    <button className="add-btn" onClick={() => setScreen("plant-new")}>
+                      <svg viewBox="0 0 24 24" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" fill="none">
+                        <path d="M12 5 V19 M5 12 H19" />
+                      </svg>
+                      植える
+                    </button>
                   </div>
-                </>
+
+                  {/* 庭：眠らせていない企業の鉢植えを並べる。鉢をタップすると、その企業の詳細を開く。
+                  デモの人には、時間帯（空の色）を切り替えるスライダーも出す */}
+                  <Garden
+                    companies={companies.filter((c) => !c.is_sleeping)}
+                    onSelect={openDetail}
+                    showTimeSlider={me.isDemo}
+                  />
+
+                  {latestRecordCompany && (
+                    <>
+                      <div className="section-label">
+                        <span>最近、気持ちが動いた企業</span>
+                      </div>
+                      <div
+                        className="plant-row"
+                        onClick={() => openDetail(latestRecordCompany)}
+                      >
+                        <span className="mini-plant"><PlantIcon company={latestRecordCompany} size={30} /></span>
+                        <div className="row-main">
+                          <div className="row-name">{latestRecordCompany.company_name}</div>
+                          <div className="row-status">
+                            {latestRecord.title}
+                            {latestRecord.note ? `・${latestRecord.note}` : ""}
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {favoriteCompanies.length > 0 && (
+                    <>
+                      <div className="section-label-row">
+                        <span>お気に入りの企業</span>
+                        <span
+                          className="section-link"
+                          onClick={() => {
+                            setActiveTab("companies");
+                            setFilterType("fav");
+                          }}
+                        >
+                          すべて見る →
+                        </span>
+                      </div>
+                      <div className="garden">
+                        {favoriteCompanies.slice(0, 4).map((c) => (
+                          <div className="plant-card" key={c.id} onClick={() => openDetail(c)}>
+                            <button
+                              className={c.is_favorite ? "fav-btn active" : "fav-btn"}
+                              onClick={(e) => toggleFavorite(c, e)}
+                            >
+                              <svg viewBox="0 0 24 24">
+                                <path d="M12 20 C6 15 3 11.5 3 8 C3 5 5.2 3 8 3 C10 3 11.3 4.3 12 5.5 C12.7 4.3 14 3 16 3 C18.8 3 21 5 21 8 C21 11.5 18 15 12 20 Z" />
+                              </svg>
+                            </button>
+                            <span className="stage-label">{STAGE_LABEL[c.growth_stage]}</span>
+                            <div className="plant-card-icon"><PlantIcon company={c} size={64} /></div>
+                            <div className="name">{c.company_name}</div>
+                            <div className="status">{c.status}</div>
+                            <div className="heart-row">
+                              {[1, 2, 3, 4, 5].map((n) => (
+                                <span key={n} className={n <= c.interest_level ? "on" : ""}></span>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  <p className="toggle-note">下のタブから、企業一覧や記録もまとめて見られます</p>
+                </div>
               )}
 
-              {favoriteCompanies.length > 0 && (
-                <>
-                  <div className="section-label-row">
-                    <span>お気に入りの企業</span>
-                    <span
-                      className="section-link"
-                      onClick={() => {
-                        setActiveTab("companies");
-                        setFilterType("fav");
-                      }}
-                    >
-                      すべて見る →
-                    </span>
+              {activeTab === "companies" && (
+                <div className="companies-screen">
+                  <div className="page-header">
+                    <div className="header-fill">
+                      <p className="eyebrow">企業</p>
+                      <h1 className="page-title title-right">
+                        庭のみんな・全{companies.filter((c) => !c.is_sleeping).length}社
+                      </h1>
+                    </div>
                   </div>
-                  <div className="garden">
-                    {favoriteCompanies.slice(0, 4).map((c) => (
-                      <div className="plant-card" key={c.id} onClick={() => openDetail(c)}>
+
+                  <div className="control-row">
+                    <div className="status-pills">
+                      <div
+                        className={filterType === "all" ? "status-pill active" : "status-pill"}
+                        onClick={() => setFilterType("all")}
+                      >
+                        すべて
+                      </div>
+                      <div
+                        className={filterType === "progress" ? "status-pill active" : "status-pill"}
+                        onClick={() => setFilterType("progress")}
+                      >
+                        選考中
+                      </div>
+                      <div
+                        className={filterType === "fav" ? "status-pill active" : "status-pill"}
+                        onClick={() => setFilterType("fav")}
+                      >
+                        お気に入り
+                      </div>
+                    </div>
+                    <div className="sort-wrap">
+                      <div className="sort-btn" onClick={() => setSortMenuOpen(!sortMenuOpen)}>
+                        <svg viewBox="0 0 24 24" stroke="var(--ink-soft)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                          <path d="M6 5 V19 M6 19 L3 16 M6 19 L9 16" />
+                          <path d="M18 19 V5 M18 5 L15 8 M18 5 L21 8" />
+                        </svg>
+                      </div>
+                      {sortMenuOpen && (
+                        <div className="sort-menu open">
+                          {[
+                            { key: "interest", label: "志望度が高い順" },
+                            { key: "growth", label: "育ってきた順" },
+                            { key: "new", label: "新しく保存した順" },
+                          ].map((opt) => (
+                            <div
+                              key={opt.key}
+                              className={sortType === opt.key ? "sort-option selected" : "sort-option"}
+                              onClick={() => {
+                                setSortType(opt.key);
+                                setSortMenuOpen(false);
+                              }}
+                            >
+                              {opt.label}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <ul className="company-list">
+                    {sortedCompanies.map((company) => (
+                      <li
+                        key={company.id}
+                        className="company-row"
+                        onClick={() => openDetail(company)}
+                      >
+                        <span className="mini-plant"><PlantIcon company={company} size={30} /></span>
+                        <div className="row-main">
+                          <div className="row-name">{company.company_name}</div>
+                          {/* 選考ステータスの横に、ひとことメモを同じ行で並べる */}
+                          <div className="row-status">
+                            {company.status}
+                            {company.short_memo && <span className="row-memo">{company.short_memo}</span>}
+                          </div>
+                        </div>
+                        <div className="row-stars">
+                          {"★".repeat(company.interest_level)}
+                        </div>
                         <button
-                          className={c.is_favorite ? "fav-btn active" : "fav-btn"}
-                          onClick={(e) => toggleFavorite(c, e)}
+                          className={company.is_favorite ? "fav-btn active" : "fav-btn"}
+                          onClick={(e) => toggleFavorite(company, e)}
                         >
                           <svg viewBox="0 0 24 24">
                             <path d="M12 20 C6 15 3 11.5 3 8 C3 5 5.2 3 8 3 C10 3 11.3 4.3 12 5.5 C12.7 4.3 14 3 16 3 C18.8 3 21 5 21 8 C21 11.5 18 15 12 20 Z" />
                           </svg>
                         </button>
-                        <span className="stage-label">{STAGE_LABEL[c.growth_stage]}</span>
-                        <div className="plant-card-icon"><PlantIcon company={c} size={64} /></div>
-                        <div className="name">{c.company_name}</div>
-                        <div className="status">{c.status}</div>
-                        <div className="heart-row">
-                          {[1, 2, 3, 4, 5].map((n) => (
-                            <span key={n} className={n <= c.interest_level ? "on" : ""}></span>
-                          ))}
+                      </li>
+                    ))}
+                  </ul>
+
+                  {companies.filter((c) => c.is_sleeping).length > 0 && (
+                    <div className="sleeping-toggle" onClick={() => setShowSleeping(!showSleeping)}>
+                      {showSleeping ? "閉じる ▴" : `眠らせた企業（${companies.filter((c) => c.is_sleeping).length}）社をみる ▾`}
+                    </div>
+                  )}
+
+                  {showSleeping && (
+                    <ul className="company-list sleeping-list">
+                      {companies.filter((c) => c.is_sleeping).map((company) => (
+                        <li
+                          key={company.id}
+                          className="company-row"
+                          onClick={() => openDetail(company)}
+                        >
+                          <span className="mini-plant"><PlantIcon company={company} size={30} /></span>
+                          <div className="row-main">
+                            <div className="row-name">{company.company_name}</div>
+                            {/* 選考ステータスの横に、ひとことメモを同じ行で並べる */}
+                            <div className="row-status">
+                              {company.status}
+                              {company.short_memo && <span className="row-memo">{company.short_memo}</span>}
+                            </div>
+                          </div>
+                          <div className="row-stars">
+                            {"★".repeat(company.interest_level)}
+                          </div>
+                          <button
+                            className={company.is_favorite ? "fav-btn active" : "fav-btn"}
+                            onClick={(e) => toggleFavorite(company, e)}
+                          >
+                            <svg viewBox="0 0 24 24">
+                              <path d="M12 20 C6 15 3 11.5 3 8 C3 5 5.2 3 8 3 C10 3 11.3 4.3 12 5.5 C12.7 4.3 14 3 16 3 C18.8 3 21 5 21 8 C21 11.5 18 15 12 20 Z" />
+                            </svg>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              {activeTab === "records" && (
+                <div className="records-screen">
+                  <div className="page-header">
+                    <div className="header-fill">
+                      <p className="eyebrow">記録</p>
+                      <h1 className="page-title title-right">庭の様子</h1>
+                    </div>
+                  </div>
+
+                  <div className="stat-grid">
+                    <div className="stat-card c-sprout">
+                      <div className="stat-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#4F7A55" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 20 V11" />
+                          <path d="M12 14 C7 14 6 10 6 7 C10 7 12 9.5 12 14 Z" />
+                          <path d="M12 12 C17 12 18 8.5 18 6 C14 6 12 8 12 12 Z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <div className="stat-num">{growingCount}</div>
+                        <div className="stat-label">育てている苗</div>
+                      </div>
+                    </div>
+                    <div className="stat-card c-talk">
+                      <div className="stat-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#C08A2E" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M4 5.5 H20 V16 H9 L5 19.5 V16 H4 Z" />
+                          <path d="M8 9.5 H16 M8 12.5 H13" />
+                        </svg>
+                      </div>
+                      <div>
+                        <div className="stat-num">{interviewingCount}</div>
+                        <div className="stat-label">面接・最終選考</div>
+                      </div>
+                    </div>
+                    <div className="stat-card c-flower">
+                      <div className="stat-icon">
+                        <svg viewBox="0 0 24 24">
+                          <circle cx="12" cy="12" r="3" fill="#8574A3" />
+                          <circle cx="12" cy="6" r="4" fill="#E8A9A0" />
+                          <circle cx="17" cy="9.5" r="4" fill="#E8A9A0" />
+                          <circle cx="15" cy="16" r="4" fill="#E8A9A0" />
+                          <circle cx="9" cy="16" r="4" fill="#E8A9A0" />
+                          <circle cx="7" cy="9.5" r="4" fill="#E8A9A0" />
+                        </svg>
+                      </div>
+                      <div>
+                        <div className="stat-num">{offerCount}</div>
+                        <div className="stat-label">内定の花</div>
+                      </div>
+                    </div>
+                    <div className="stat-card c-rest">
+                      <div className="stat-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#8A8A7C" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M17 12.5 A7 7 0 1 1 10.8 5.2 A5.6 5.6 0 0 0 17 12.5 Z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <div className="stat-num">{companies.filter((c) => c.is_sleeping).length}</div>
+                        <div className="stat-label">眠っている</div>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="stat-note">
+                    「眠っている」は自分で「いったん眠らせる」を選んだ企業です。アプリが自動で判定することはありません。
+                  </p>
+
+                  {nudgeCompany && (
+                    <div className="nudge-card" onClick={() => openDetail(nudgeCompany)}>
+                      <span className="nudge-dot">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#8A8A7C" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: "18px", height: "18px" }}>
+                          <path d="M17 12.5 A7 7 0 1 1 10.8 5.2 A5.6 5.6 0 0 0 17 12.5 Z" />
+                        </svg>
+                      </span>
+                      <div>
+                        <span style={{ fontWeight: 700 }}>{nudgeCompany.company_name}</span>
+                        、しばらく記録がありません。
+                        <br />
+                        ちょっと様子を見てみる？
+                      </div>
+                      <span className="nudge-arrow">›</span>
+                    </div>
+                  )}
+
+                  <div className="dist-block">
+                    <p className="field-label">成長段階の分布</p>
+                    {[
+                      { key: "seed", label: "たね" },
+                      { key: "sprout", label: "双葉" },
+                      { key: "bud", label: "つぼみ" },
+                      { key: "flower", label: "花" },
+                    ].map((s) => (
+                      <div className="dist-row" key={s.key}>
+                        <span className="dist-label">{s.label}</span>
+                        <div className="dist-track">
+                          <div
+                            className="dist-fill"
+                            style={{ width: `${(stageCount[s.key] / stageTotal) * 100}%` }}
+                          ></div>
+                        </div>
+                        <span className="dist-num">{stageCount[s.key]}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="section-label">最近の記録</div>
+                  <div className="log-list">
+                    {visibleLogGroups.map((g) => (
+                      <div
+                        className="log-row"
+                        key={g.key}
+                        onClick={() => {
+                          const c = companies.find((co) => co.id === g.company_id);
+                          if (c) openDetail(c);
+                        }}
+                      >
+                        <div className="log-d">{g.date}</div>
+                        <div className="log-body">
+                          <span className="log-company">{g.company_name}</span> —{" "}
+                          <span className="log-note">{g.titles.join("、")}</span>
                         </div>
                       </div>
                     ))}
                   </div>
-                </>
-              )}
-
-              <p className="toggle-note">下のタブから、企業一覧や記録もまとめて見られます</p>
-            </div>
-          )}
-
-          {activeTab === "companies" && (
-            <div className="companies-screen">
-              <div className="page-header">
-                <div className="header-fill">
-                  <p className="eyebrow">企業</p>
-                  <h1 className="page-title title-right">
-                    庭のみんな・全{companies.filter((c) => !c.is_sleeping).length}社
-                  </h1>
-                </div>
-              </div>
-
-              <div className="control-row">
-                <div className="status-pills">
-                  <div
-                    className={filterType === "all" ? "status-pill active" : "status-pill"}
-                    onClick={() => setFilterType("all")}
-                  >
-                    すべて
-                  </div>
-                  <div
-                    className={filterType === "progress" ? "status-pill active" : "status-pill"}
-                    onClick={() => setFilterType("progress")}
-                  >
-                    選考中
-                  </div>
-                  <div
-                    className={filterType === "fav" ? "status-pill active" : "status-pill"}
-                    onClick={() => setFilterType("fav")}
-                  >
-                    お気に入り
-                  </div>
-                </div>
-                <div className="sort-wrap">
-                  <div className="sort-btn" onClick={() => setSortMenuOpen(!sortMenuOpen)}>
-                    <svg viewBox="0 0 24 24" stroke="var(--ink-soft)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none">
-                      <path d="M6 5 V19 M6 19 L3 16 M6 19 L9 16" />
-                      <path d="M18 19 V5 M18 5 L15 8 M18 5 L21 8" />
-                    </svg>
-                  </div>
-                  {sortMenuOpen && (
-                    <div className="sort-menu open">
-                      {[
-                        { key: "interest", label: "志望度が高い順" },
-                        { key: "growth", label: "育ってきた順" },
-                        { key: "new", label: "新しく保存した順" },
-                      ].map((opt) => (
-                        <div
-                          key={opt.key}
-                          className={sortType === opt.key ? "sort-option selected" : "sort-option"}
-                          onClick={() => {
-                            setSortType(opt.key);
-                            setSortMenuOpen(false);
-                          }}
-                        >
-                          {opt.label}
-                        </div>
-                      ))}
+                  {groupedRecords.length > 4 && (
+                    <div className="log-more-btn" onClick={() => setShowAllLog(!showAllLog)}>
+                      {showAllLog ? "閉じる" : "すべての記録を見る"}
                     </div>
                   )}
                 </div>
-              </div>
+              )}
 
-              <ul className="company-list">
-                {sortedCompanies.map((company) => (
-                  <li
-                    key={company.id}
-                    className="company-row"
-                    onClick={() => openDetail(company)}
-                  >
-                    <span className="mini-plant"><PlantIcon company={company} size={30} /></span>
-                    <div className="row-main">
-                      <div className="row-name">{company.company_name}</div>
-                      {/* 選考ステータスの横に、ひとことメモを同じ行で並べる */}
-                      <div className="row-status">
-                        {company.status}
-                        {company.short_memo && <span className="row-memo">{company.short_memo}</span>}
+              {activeTab === "settings" && (
+                <div className="settings-screen">
+                  <div className="page-header">
+                    <p className="eyebrow">設定</p>
+                    <div className="settings-header-row">
+                      <div className="theme-toggle" onClick={toggleDarkMode}>
+                        {darkMode ? (
+                          <svg viewBox="0 0 24 24" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="4.5" />
+                            <path d="M12 2.5 V5 M12 19 V21.5 M2.5 12 H5 M19 12 H21.5 M5 5 L6.8 6.8 M17.2 17.2 L19 19 M19 5 L17.2 6.8 M6.8 17.2 L5 19" />
+                          </svg>
+                        ) : (
+                          <svg viewBox="0 0 24 24" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M18 12.5 A7 7 0 1 1 11.8 5.2 A5.6 5.6 0 0 0 18 12.5 Z" />
+                          </svg>
+                        )}
                       </div>
+                      <h1 className="page-title title-up">設定</h1>
                     </div>
-                    <div className="row-stars">
-                      {"★".repeat(company.interest_level)}
-                    </div>
-                    <button
-                      className={company.is_favorite ? "fav-btn active" : "fav-btn"}
-                      onClick={(e) => toggleFavorite(company, e)}
-                    >
-                      <svg viewBox="0 0 24 24">
-                        <path d="M12 20 C6 15 3 11.5 3 8 C3 5 5.2 3 8 3 C10 3 11.3 4.3 12 5.5 C12.7 4.3 14 3 16 3 C18.8 3 21 5 21 8 C21 11.5 18 15 12 20 Z" />
-                      </svg>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+                  </div>
 
-              {companies.filter((c) => c.is_sleeping).length > 0 && (
-                <div className="sleeping-toggle" onClick={() => setShowSleeping(!showSleeping)}>
-                  {showSleeping ? "閉じる ▴" : `眠らせた企業（${companies.filter((c) => c.is_sleeping).length}）社をみる ▾`}
+                  <div className="section-label">アカウント</div>
+                  <div className="settings-list">
+                    <div className="settings-row" style={{ cursor: "default" }}>
+                      <span>{me.isDemo ? "アカウント" : "メールアドレス"}</span>
+                      <span className="arrow" style={{ color: "var(--ink)" }}>
+                        {me.isDemo ? "デモアカウント" : user?.primaryEmailAddress?.emailAddress}
+                      </span>
+                    </div>
+                    <div className="settings-row" onClick={() => setLogoutConfirmOpen(true)}>
+                      <span>{me.isDemo ? "デモを終了する" : "ログアウト"}</span>
+                      <span className="arrow">›</span>
+                    </div>
+                  </div>
+
+                  <div className="section-label">活動について</div>
+                  <div className="settings-list">
+                    <div
+                      className="settings-row"
+                      onClick={() => openConditions(null)}
+                    >
+                      <span>希望条件</span>
+                      <span className="arrow">›</span>
+                    </div>
+                  </div>
+
+                  <div className="section-label">データ</div>
+                  <div className="settings-list">
+                    <div className="settings-row" onClick={exportData}>
+                      <span>データをエクスポート</span>
+                      <span className="arrow">›</span>
+                    </div>
+                    <div className="settings-row" onClick={() => setScreen("confirm-delete")}>
+                      <span>データを削除</span>
+                      <span className="arrow">›</span>
+                    </div>
+                  </div>
+
+                  <div className="section-label">その他</div>
+                  <div className="settings-list">
+                    <div className="settings-row" onClick={() => setOnboardingOpen(true)}>
+                      <span>使い方を見る</span>
+                      <span className="arrow">›</span>
+                    </div>
+                    <div className="settings-row" onClick={() => setScreen("about")}>
+                      <span>このアプリについて</span>
+                      <span className="arrow">›</span>
+                    </div>
+                  </div>
+
                 </div>
               )}
 
-              {showSleeping && (
-                <ul className="company-list sleeping-list">
-                  {companies.filter((c) => c.is_sleeping).map((company) => (
-                    <li
-                      key={company.id}
-                      className="company-row"
-                      onClick={() => openDetail(company)}
-                    >
-                      <span className="mini-plant"><PlantIcon company={company} size={30} /></span>
-                      <div className="row-main">
-                        <div className="row-name">{company.company_name}</div>
-                        {/* 選考ステータスの横に、ひとことメモを同じ行で並べる */}
-                        <div className="row-status">
-                          {company.status}
-                          {company.short_memo && <span className="row-memo">{company.short_memo}</span>}
-                        </div>
-                      </div>
-                      <div className="row-stars">
-                        {"★".repeat(company.interest_level)}
-                      </div>
-                      <button
-                        className={company.is_favorite ? "fav-btn active" : "fav-btn"}
-                        onClick={(e) => toggleFavorite(company, e)}
-                      >
-                        <svg viewBox="0 0 24 24">
-                          <path d="M12 20 C6 15 3 11.5 3 8 C3 5 5.2 3 8 3 C10 3 11.3 4.3 12 5.5 C12.7 4.3 14 3 16 3 C18.8 3 21 5 21 8 C21 11.5 18 15 12 20 Z" />
-                        </svg>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-
-          {activeTab === "records" && (
-            <div className="records-screen">
-              <div className="page-header">
-                <div className="header-fill">
-                  <p className="eyebrow">記録</p>
-                  <h1 className="page-title title-right">庭の様子</h1>
+              <div className="bottom-nav">
+                <div
+                  className={activeTab === "home" ? "nav-item active" : "nav-item"}
+                  onClick={() => setActiveTab("home")}
+                >
+                  <span className="icon">
+                    <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 12 L12 5 L20 12" />
+                      <path d="M6.5 10.5 V19 H17.5 V10.5" />
+                      <path d="M10 19 V14.5 H14 V19" />
+                    </svg>
+                  </span>
+                  ホーム
                 </div>
-              </div>
-
-              <div className="stat-grid">
-                <div className="stat-card c-sprout">
-                  <div className="stat-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#4F7A55" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <div
+                  className={activeTab === "companies" ? "nav-item active" : "nav-item"}
+                  onClick={() => setActiveTab("companies")}
+                >
+                  <span className="icon">
+                    <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M12 20 V11" />
                       <path d="M12 14 C7 14 6 10 6 7 C10 7 12 9.5 12 14 Z" />
                       <path d="M12 12 C17 12 18 8.5 18 6 C14 6 12 8 12 12 Z" />
                     </svg>
-                  </div>
-                  <div>
-                    <div className="stat-num">{growingCount}</div>
-                    <div className="stat-label">育てている苗</div>
-                  </div>
-                </div>
-                <div className="stat-card c-talk">
-                  <div className="stat-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#C08A2E" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M4 5.5 H20 V16 H9 L5 19.5 V16 H4 Z" />
-                      <path d="M8 9.5 H16 M8 12.5 H13" />
-                    </svg>
-                  </div>
-                  <div>
-                    <div className="stat-num">{interviewingCount}</div>
-                    <div className="stat-label">面接・最終選考</div>
-                  </div>
-                </div>
-                <div className="stat-card c-flower">
-                  <div className="stat-icon">
-                    <svg viewBox="0 0 24 24">
-                      <circle cx="12" cy="12" r="3" fill="#8574A3" />
-                      <circle cx="12" cy="6" r="4" fill="#E8A9A0" />
-                      <circle cx="17" cy="9.5" r="4" fill="#E8A9A0" />
-                      <circle cx="15" cy="16" r="4" fill="#E8A9A0" />
-                      <circle cx="9" cy="16" r="4" fill="#E8A9A0" />
-                      <circle cx="7" cy="9.5" r="4" fill="#E8A9A0" />
-                    </svg>
-                  </div>
-                  <div>
-                    <div className="stat-num">{offerCount}</div>
-                    <div className="stat-label">内定の花</div>
-                  </div>
-                </div>
-                <div className="stat-card c-rest">
-                  <div className="stat-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#8A8A7C" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M17 12.5 A7 7 0 1 1 10.8 5.2 A5.6 5.6 0 0 0 17 12.5 Z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <div className="stat-num">{companies.filter((c) => c.is_sleeping).length}</div>
-                    <div className="stat-label">眠っている</div>
-                  </div>
-                </div>
-              </div>
-              <p className="stat-note">
-                「眠っている」は自分で「いったん眠らせる」を選んだ企業です。アプリが自動で判定することはありません。
-              </p>
-
-              {nudgeCompany && (
-                <div className="nudge-card" onClick={() => openDetail(nudgeCompany)}>
-                  <span className="nudge-dot">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#8A8A7C" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: "18px", height: "18px" }}>
-                      <path d="M17 12.5 A7 7 0 1 1 10.8 5.2 A5.6 5.6 0 0 0 17 12.5 Z" />
-                    </svg>
                   </span>
-                  <div>
-                    <span style={{ fontWeight: 700 }}>{nudgeCompany.company_name}</span>
-                    、しばらく記録がありません。
-                    <br />
-                    ちょっと様子を見てみる？
-                  </div>
-                  <span className="nudge-arrow">›</span>
+                  企業
                 </div>
-              )}
-
-              <div className="dist-block">
-                <p className="field-label">成長段階の分布</p>
-                {[
-                  { key: "seed", label: "たね" },
-                  { key: "sprout", label: "双葉" },
-                  { key: "bud", label: "つぼみ" },
-                  { key: "flower", label: "花" },
-                ].map((s) => (
-                  <div className="dist-row" key={s.key}>
-                    <span className="dist-label">{s.label}</span>
-                    <div className="dist-track">
-                      <div
-                        className="dist-fill"
-                        style={{ width: `${(stageCount[s.key] / stageTotal) * 100}%` }}
-                      ></div>
-                    </div>
-                    <span className="dist-num">{stageCount[s.key]}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="section-label">最近の記録</div>
-              <div className="log-list">
-                {visibleLogGroups.map((g) => (
-                  <div
-                    className="log-row"
-                    key={g.key}
-                    onClick={() => {
-                      const c = companies.find((co) => co.id === g.company_id);
-                      if (c) openDetail(c);
-                    }}
-                  >
-                    <div className="log-d">{g.date}</div>
-                    <div className="log-body">
-                      <span className="log-company">{g.company_name}</span> —{" "}
-                      <span className="log-note">{g.titles.join("、")}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {groupedRecords.length > 4 && (
-                <div className="log-more-btn" onClick={() => setShowAllLog(!showAllLog)}>
-                  {showAllLog ? "閉じる" : "すべての記録を見る"}
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeTab === "settings" && (
-            <div className="settings-screen">
-              <div className="page-header">
-                <p className="eyebrow">設定</p>
-                <div className="settings-header-row">
-                  <div className="theme-toggle" onClick={toggleDarkMode}>
-                    {darkMode ? (
-                      <svg viewBox="0 0 24 24" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="4.5" />
-                        <path d="M12 2.5 V5 M12 19 V21.5 M2.5 12 H5 M19 12 H21.5 M5 5 L6.8 6.8 M17.2 17.2 L19 19 M19 5 L17.2 6.8 M6.8 17.2 L5 19" />
-                      </svg>
-                    ) : (
-                      <svg viewBox="0 0 24 24" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M18 12.5 A7 7 0 1 1 11.8 5.2 A5.6 5.6 0 0 0 18 12.5 Z" />
-                      </svg>
-                    )}
-                  </div>
-                  <h1 className="page-title title-up">設定</h1>
-                </div>
-              </div>
-
-              <div className="section-label">アカウント</div>
-              <div className="settings-list">
-                <div className="settings-row" style={{ cursor: "default" }}>
-                  <span>{me.isDemo ? "アカウント" : "メールアドレス"}</span>
-                  <span className="arrow" style={{ color: "var(--ink)" }}>
-                    {me.isDemo ? "デモアカウント" : user?.primaryEmailAddress?.emailAddress}
-                  </span>
-                </div>
-                <div className="settings-row" onClick={() => setLogoutConfirmOpen(true)}>
-                  <span>{me.isDemo ? "デモを終了する" : "ログアウト"}</span>
-                  <span className="arrow">›</span>
-                </div>
-              </div>
-
-              <div className="section-label">活動について</div>
-              <div className="settings-list">
                 <div
-                  className="settings-row"
-                  onClick={() => openConditions(null)}
+                  className={activeTab === "records" ? "nav-item active" : "nav-item"}
+                  onClick={() => setActiveTab("records")}
                 >
-                  <span>希望条件</span>
-                  <span className="arrow">›</span>
+                  <span className="icon">
+                    <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M6 4.5 H16 L18.5 7 V19.5 H6 Z" />
+                      <path d="M16 4.5 V7 H18.5" />
+                      <path d="M9 11 H15 M9 14 H15 M9 17 H12.5" />
+                    </svg>
+                  </span>
+                  記録
+                </div>
+                <div
+                  className={activeTab === "settings" ? "nav-item active" : "nav-item"}
+                  onClick={() => setActiveTab("settings")}
+                >
+                  <span className="icon">
+                    <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="3" />
+                      <path d="M12 3.5 V6 M12 18 V20.5 M3.5 12 H6 M18 12 H20.5 M6 6 L7.7 7.7 M16.3 16.3 L18 18 M18 6 L16.3 7.7 M7.7 16.3 L6 18" />
+                    </svg>
+                  </span>
+                  設定
                 </div>
               </div>
-
-              <div className="section-label">データ</div>
-              <div className="settings-list">
-                <div className="settings-row" onClick={exportData}>
-                  <span>データをエクスポート</span>
-                  <span className="arrow">›</span>
-                </div>
-                <div className="settings-row" onClick={() => setScreen("confirm-delete")}>
-                  <span>データを削除</span>
-                  <span className="arrow">›</span>
-                </div>
-              </div>
-
-              <div className="section-label">その他</div>
-              <div className="settings-list">
-                <div className="settings-row" onClick={() => setScreen("about")}>
-                  <span>このアプリについて</span>
-                  <span className="arrow">›</span>
-                </div>
-              </div>
-
-            </div>
+            </>
           )}
-
-          <div className="bottom-nav">
-            <div
-              className={activeTab === "home" ? "nav-item active" : "nav-item"}
-              onClick={() => setActiveTab("home")}
-            >
-              <span className="icon">
-                <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M4 12 L12 5 L20 12" />
-                  <path d="M6.5 10.5 V19 H17.5 V10.5" />
-                  <path d="M10 19 V14.5 H14 V19" />
-                </svg>
-              </span>
-              ホーム
-            </div>
-            <div
-              className={activeTab === "companies" ? "nav-item active" : "nav-item"}
-              onClick={() => setActiveTab("companies")}
-            >
-              <span className="icon">
-                <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 20 V11" />
-                  <path d="M12 14 C7 14 6 10 6 7 C10 7 12 9.5 12 14 Z" />
-                  <path d="M12 12 C17 12 18 8.5 18 6 C14 6 12 8 12 12 Z" />
-                </svg>
-              </span>
-              企業
-            </div>
-            <div
-              className={activeTab === "records" ? "nav-item active" : "nav-item"}
-              onClick={() => setActiveTab("records")}
-            >
-              <span className="icon">
-                <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M6 4.5 H16 L18.5 7 V19.5 H6 Z" />
-                  <path d="M16 4.5 V7 H18.5" />
-                  <path d="M9 11 H15 M9 14 H15 M9 17 H12.5" />
-                </svg>
-              </span>
-              記録
-            </div>
-            <div
-              className={activeTab === "settings" ? "nav-item active" : "nav-item"}
-              onClick={() => setActiveTab("settings")}
-            >
-              <span className="icon">
-                <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M12 3.5 V6 M12 18 V20.5 M3.5 12 H6 M18 12 H20.5 M6 6 L7.7 7.7 M16.3 16.3 L18 18 M18 6 L16.3 7.7 M7.7 16.3 L6 18" />
-                </svg>
-              </span>
-              設定
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-
-    {/* ============ ログアウトの確認（画面の中央に重ねて表示） ============ */}
-    {logoutConfirmOpen && (
-      <div className="modal-overlay" onClick={() => setLogoutConfirmOpen(false)}>
-        <div className="modal-box" onClick={(e) => e.stopPropagation()}>
-          <p className="modal-title">{me.isDemo ? "デモを終了しますか？" : "ログアウトしますか？"}</p>
-          <p className="modal-text">
-            {me.isDemo
-              ? "このデモの庭には戻れなくなります。もう一度「デモで試してみる」を押すと、新しい庭で体験できます。"
-              : "記録したデータは消えません。次に使う時は、もう一度ログインしてください。"}
-          </p>
-          <div className="modal-buttons">
-            <button className="modal-cancel-btn" onClick={() => setLogoutConfirmOpen(false)}>
-              キャンセル
-            </button>
-            <button
-              className="modal-ok-btn"
-              onClick={() => {
-                setLogoutConfirmOpen(false);
-                signOut();
-              }}
-            >
-              {me.isDemo ? "終了する" : "ログアウト"}
-            </button>
-          </div>
         </div>
-      </div>
-    )}
-    </SignedIn>
-  </>
+
+        {/* ============ 使い方ポップアップ（初回だけ自動で表示。設定タブからも開ける） ============ */}
+        {onboardingOpen && (
+          <Onboarding isDemo={me.isDemo} rematchLimit={me.rematchLimit} onClose={closeOnboarding} />
+        )}
+
+        {/* ============ ログアウトの確認（画面の中央に重ねて表示） ============ */}
+        {logoutConfirmOpen && (
+          <div className="modal-overlay" onClick={() => setLogoutConfirmOpen(false)}>
+            <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+              <p className="modal-title">{me.isDemo ? "デモを終了しますか？" : "ログアウトしますか？"}</p>
+              <p className="modal-text">
+                {me.isDemo
+                  ? "このデモの庭には戻れなくなります。もう一度「デモで試してみる」を押すと、新しい庭で体験できます。"
+                  : "記録したデータは消えません。次に使う時は、もう一度ログインしてください。"}
+              </p>
+              <div className="modal-buttons">
+                <button className="modal-cancel-btn" onClick={() => setLogoutConfirmOpen(false)}>
+                  キャンセル
+                </button>
+                <button
+                  className="modal-ok-btn"
+                  onClick={() => {
+                    setLogoutConfirmOpen(false);
+                    signOut();
+                  }}
+                >
+                  {me.isDemo ? "終了する" : "ログアウト"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </SignedIn>
+    </>
   );
 }
 
