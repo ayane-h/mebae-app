@@ -2905,17 +2905,6 @@ body.dark ::selection {
   cursor: pointer;
 }
 
-/* めくっても箱の高さが変わらないよう、中身の高さをそろえておく */
-.onboarding-body {
-  min-height: 236px;
-  animation: onboarding-in 0.25s ease both;
-}
-
-@keyframes onboarding-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
 /* 絵を置く場所（高さをそろえて、上下左右の中央に置く） */
 .onboarding-art {
   height: 96px;
@@ -3035,47 +3024,115 @@ body.dark ::selection {
   background: var(--moss-deep);
 }
 
-/* 動きを減らす設定にしている人には、ふわっと出る動きを止める */
-@media (prefers-reduced-motion: reduce) {
-  .onboarding-body {
-    animation: none;
-  }
+/* ============================================================
+   使い方ポップアップ：指で左右にスライドできるようにする
+   4枚を横に並べて、横スクロールで見せる（庭のページ送りと同じ仕組み）
+   ============================================================ */
+.onboarding-scroll {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;   /* 指を離したら、近いほうのページでぴたっと止まる */
+  overscroll-behavior-x: contain;  /* 端まで来た時に、後ろの画面まで一緒に動かないようにする */
+  scrollbar-width: none;           /* スクロールバーは出さない */
+  margin: 0 -20px;                 /* 箱の左右の余白ぶん広げる（ページが、箱の端から端まで動いて見えるように） */
+  user-select: none;               /* マウスでつかんだ時に、文字が選択されないようにする */
+  cursor: grab;
+}
+
+.onboarding-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* マウスでつかんで動かしている間は、ぴたっと止まる動きを切る（切らないと、動かすたびに引き戻される） */
+.onboarding-scroll.dragging {
+  scroll-snap-type: none;
+  cursor: grabbing;
+}
+
+.onboarding-page {
+  flex: 0 0 100%;             /* 1枚が、入れ物の横幅ちょうどになる */
+  scroll-snap-align: center;
+  scroll-snap-stop: always;   /* 勢いよくスライドしても、1枚ずつ止まる */
+  padding: 0 20px;            /* 上で広げたぶん、中身は内側に戻す */
+  box-sizing: border-box;
 }
 
 /* ============================================================
-   企業詳細：問いかけカード（まだ書いていない記録を、1つだけ案内する）
+   企業詳細：2ステップツアー（案内する場所だけ明るく見せる）
    ============================================================ */
-.next-step-card {
-  margin: -6px 0 18px; /* 植物の箱のすぐ下に寄せる */
-  padding: 14px 16px;
-  background: var(--card-sprout-bg);
+
+/* 画面全体に重ねる透明な板（案内の間、後ろの画面を触れないようにする） */
+.tour-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+}
+
+/* 明るく見せる範囲。自分は透明で、まわりを大きな影で暗くする */
+.tour-hole {
+  position: fixed;
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.75),   /* 明るい範囲のふち */
+    0 0 0 9999px rgba(20, 30, 25, 0.55);   /* まわりの暗い部分 */
+  pointer-events: none;
+}
+
+/* 案内する場所が見つかるまでの、全体を暗くするだけの板 */
+.tour-dim {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 30, 25, 0.55);
+}
+
+/* 説明の箱（上下の位置は、DetailTour.jsx で決めている） */
+.tour-tip {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(300px, calc(100vw - 32px));
+  padding: 14px 16px 12px;
+  background: var(--paper);
   border-radius: 16px;
-  text-align: center;
+  box-shadow: 0 12px 28px var(--shadow);
+  animation: modal-fade 0.2s ease;
 }
 
-/* 今の状態のひとこと（小さめ） */
-.next-step-line {
-  font-size: 11.5px;
-  color: var(--moss-deep);
-  font-weight: 700;
-  margin: 0 0 6px;
-}
-
-/* 問いかけ（カードの主役） */
-.next-step-question {
-  font-family: 'Shippori Mincho', serif;
-  font-size: 15px;
-  font-weight: 700;
-  line-height: 1.6;
+.tour-text {
+  font-size: 13px;
+  line-height: 1.7;
   color: var(--ink);
   margin: 0 0 12px;
 }
 
-.next-step-btn {
+.tour-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* 「1 / 2」の表示。左に置いて、ボタンを右に寄せる */
+.tour-count {
+  margin-right: auto;
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.tour-skip {
+  padding: 6px 4px;
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.tour-next {
+  padding: 8px 18px;
   background: var(--btn-bg);
   color: #fff;
   border: none;
-  padding: 9px 18px;
   border-radius: 999px;
   font-family: inherit;
   font-size: 12.5px;
@@ -3083,23 +3140,305 @@ body.dark ::selection {
   cursor: pointer;
 }
 
-.next-step-btn:hover {
-  background: var(--btn-bg-hover);
-}
-
-/* カードから案内された入力欄：ふちを緑に2回光らせる */
-.guide-flash {
-  animation: guide-flash 0.8s ease 2;
-}
-
-@keyframes guide-flash {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(127, 163, 122, 0); }
-  50% { box-shadow: 0 0 0 5px rgba(127, 163, 122, 0.55); }
-}
-
-/* 動きを減らす設定にしている人には、光らせない */
+/* 動きを減らす設定にしている人には、ふわっと出る動きを止める */
 @media (prefers-reduced-motion: reduce) {
-  .guide-flash {
+  .tour-tip {
+    animation: none;
+  }
+}
+
+/* ============================================================
+   小さな動き（何かが起きた瞬間に、短く1回だけ動くもの）
+   ============================================================ */
+
+/* ---- 1. 植物が育った瞬間（企業詳細を開いている間に、段階が進んだ時） ---- */
+/* 鉢がぽんと弾む（庭で使っている garden-pop と同じ動き） */
+.detail-plant.just-grew .potted-plant {
+  animation: garden-pop 0.9s ease-out both;
+  transform-origin: 50% 95%;
+}
+
+/* 下のひとことが、ふわっと入れ替わる */
+.detail-plant.just-grew .stage-caption {
+  animation: caption-in 0.6s ease-out 0.25s both;
+}
+
+@keyframes caption-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- 2. AI照合：待っている間の表示 ---- */
+/* ○△×の場所に出す「考え中」の点（3つの点が、順番に弾む） */
+.mark-wait {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  height: 1em;
+}
+
+.mark-wait i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--moss);
+  animation: mark-wait 1s ease-in-out infinite;
+  animation-delay: inherit; /* 行ごとのずれ（App.jsx で指定）を、そのまま受け取る */
+}
+
+/* 2つ目・3つ目の点は、少しずつ遅らせる */
+.mark-wait i:nth-child(2) { margin-top: 0; animation-name: mark-wait-2; }
+.mark-wait i:nth-child(3) { animation-name: mark-wait-3; }
+
+@keyframes mark-wait {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.35; }
+  20% { transform: translateY(-3px); opacity: 1; }
+}
+
+@keyframes mark-wait-2 {
+  0%, 15%, 75%, 100% { transform: translateY(0); opacity: 0.35; }
+  35% { transform: translateY(-3px); opacity: 1; }
+}
+
+@keyframes mark-wait-3 {
+  0%, 30%, 90%, 100% { transform: translateY(0); opacity: 0.35; }
+  50% { transform: translateY(-3px); opacity: 1; }
+}
+
+/* ボタンの中の双葉（くるくる回る輪の代わり）。緑のボタンの上でも見えるよう、白い丸の上に置く */
+.rematch-sprout {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #FBF9F2;
+  margin-right: 7px;
+  vertical-align: middle;
+}
+
+/* 双葉が、根元を軸にしてゆらゆら揺れる */
+.rematch-sprout .plant-icon {
+  transform-origin: 50% 90%;
+  animation: rematch-sway 0.9s ease-in-out infinite alternate;
+}
+
+@keyframes rematch-sway {
+  from { transform: rotate(-14deg); }
+  to { transform: rotate(14deg); }
+}
+
+/* 照合中は、ボタンを薄くしない（押せないボタンは薄くなる指定を、ここだけ打ち消す） */
+.rematch-btn.busy:disabled {
+  opacity: 1;
+}
+
+/* 待っている間の言葉。切り替わるたびに、ふわっと出る */
+.rematch-hint {
+  animation: hint-in 0.4s ease-out both;
+}
+
+@keyframes hint-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- 2. AI照合：結果が出た時（○△×が、上から順にぽつぽつと現れる） ---- */
+/* 行ごとの遅れは、App.jsx で animation-delay として指定している */
+.req-table.revealing td.mark {
+  animation: mark-in 0.4s ease-out both;
+}
+
+@keyframes mark-in {
+  0% { opacity: 0; transform: scale(0.7); }
+  60% { opacity: 1; transform: scale(1.08); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* ---- 3. 記録を追加した時（追加した1件だけが、ふわっと現れる） ---- */
+.chip.just-added,
+.memo-card.just-added {
+  animation: item-in 0.45s ease-out both;
+}
+
+@keyframes item-in {
+  0% { opacity: 0; transform: translateY(6px) scale(0.96); }
+  60% { opacity: 1; transform: translateY(0) scale(1.03); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ---- 4. 画面の切り替え（重ねる画面を開く時に、下から軽く上がってくる） ---- */
+.detail-screen,
+.plant-new-screen,
+.desired-conditions-screen,
+.confirm-delete-screen,
+.about-screen {
+  animation: screen-in 0.24s ease-out;
+}
+
+@keyframes screen-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 動きを減らす設定にしている人には、上の動きをすべて止める */
+@media (prefers-reduced-motion: reduce) {
+  .detail-plant.just-grew .potted-plant,
+  .detail-plant.just-grew .stage-caption,
+  .mark-wait i,
+  .rematch-sprout .plant-icon,
+  .rematch-hint,
+  .req-table.revealing td.mark,
+  .chip.just-added,
+  .memo-card.just-added,
+  .detail-screen,
+  .plant-new-screen,
+  .desired-conditions-screen,
+  .confirm-delete-screen,
+  .about-screen {
+    animation: none;
+  }
+}
+
+/* ============================================================
+   企業詳細：関連リンク（採用ページ・企業HP・別の求人など）
+   ============================================================ */
+.company-links-block {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+/* 見出しの行：左に「関連リンク」、右に「編集／完了」 */
+.company-links-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.company-links-toggle {
+  font-weight: 400;
+  color: var(--moss-deep);
+  cursor: pointer;
+}
+
+/* リンクのチップ（<a>タグなので、下線と文字色を整える） */
+.link-chip {
+  text-decoration: none;
+  color: var(--ink);
+  max-width: 100%;
+}
+
+.link-chip-label {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis; /* 長い名前は「…」で省略する */
+}
+
+/* くさりのアイコン：タップすると開くものだと分かるようにする印 */
+.link-chip-icon {
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  stroke: var(--moss-deep);
+}
+
+/* リンクのチップ（<a>タグなので、下線と文字色を整える）。淡い緑にして、記録のチップと見分けやすくする */
+.link-chip {
+  text-decoration: none;
+  color: var(--moss-deep);
+  background: var(--card-sprout-bg);
+  border-color: transparent;
+  font-weight: 700;
+  max-width: 100%;
+}
+
+/* 編集中は、元の地の色に戻して、点線のふちを見せる */
+.link-chip.editing {
+  background: var(--bg);
+  color: var(--ink);
+  font-weight: 400;
+}
+
+/* ---- 追加・書き直しの入力欄 ---- */
+.link-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 12px;
+  background: var(--bg);
+  border-radius: 12px;
+  animation: item-in 0.3s ease-out both; /* 開く時に、ふわっと出す */
+}
+
+/* 名前の候補 */
+.link-form-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.link-preset {
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 11px;
+  cursor: pointer;
+}
+
+.link-preset.selected {
+  background: var(--btn-bg);
+  border-color: var(--btn-bg);
+  color: #fff;
+}
+
+.link-form-error {
+  font-size: 11.5px;
+  color: var(--coral);
+  margin: 0;
+}
+
+.link-form-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.link-form-cancel,
+.link-form-save {
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.link-form-cancel {
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+}
+
+.link-form-save {
+  background: var(--btn-bg);
+  border: none;
+  color: #fff;
+  font-weight: 700;
+}
+
+.link-form-save:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* 動きを減らす設定にしている人には、ふわっと出る動きを止める */
+@media (prefers-reduced-motion: reduce) {
+  .link-form {
     animation: none;
   }
 }

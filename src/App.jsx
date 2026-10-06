@@ -3,10 +3,14 @@ import { useState, useEffect, useRef } from "react";
 import './App.css';
 import { Garden, PottedPlant, PlantIcon, SproutIcon, PlantingScene } from "./Garden.jsx";
 import { Onboarding } from "./Onboarding.jsx";
-import { NextStepCard } from "./NextStepCard.jsx";
+import { DetailTour } from "./DetailTour.jsx";
+import { CompanyLinks } from "./CompanyLinks.jsx";
 
 // 使い方ポップアップを「もう見た」ことを、このブラウザに覚えておくための名前
 const ONBOARDING_SEEN_KEY = "mebae-onboarding-seen";
+
+// 企業詳細の2ステップツアーを「もう見た」ことを、このブラウザに覚えておくための名前
+const DETAIL_TOUR_SEEN_KEY = "mebae-detail-tour-seen";
 
 // APIの場所。ローカルでは自分のPCで動かしているWorker。
 // Vercelなどで公開する時は、環境変数 VITE_API_BASE_URL に本番のWorkerのURLを入れて切り替える
@@ -22,6 +26,18 @@ const STAGE_LABEL = {
   bud: "つぼみ",
   flower: "花が咲いた",
 };
+
+// 成長段階の順番（数字が大きいほど育っている）。「前より育ったか」を比べるために使う
+const STAGE_RANK = { seed: 0, sprout: 1, bud: 2, flower: 3 };
+
+// AI照合を待っている間に、順番に出す言葉（数秒ごとに切り替える。最後の言葉で止まる）
+const REMATCH_STEPS = [
+  "求人票を読んでいます",
+  "希望条件と見比べています",
+  "聞いておきたいことを考えています",
+  "もう少しで終わります",
+];
+const REMATCH_STEP_MS = 2800; // 言葉を切り替える間隔（ミリ秒）
 
 // AI照合が失敗した時に、画面に出す案内（Workerが返す code ごと）
 // demo_limit だけは回数を差し込むので、画面側で文言を作る
@@ -153,6 +169,19 @@ function App() {
     }
   };
 
+  // ---- 企業詳細の2ステップツアー ----
+  const [detailTourOpen, setDetailTourOpen] = useState(false); // ツアーを表示中かどうか
+
+  // 閉じた時に「もう見た」と記録する（使い方ポップアップと同じ考え方）
+  const closeDetailTour = () => {
+    setDetailTourOpen(false);
+    try {
+      localStorage.setItem(DETAIL_TOUR_SEEN_KEY, "1");
+    } catch {
+      // 保存できなくても、アプリの動きには影響しない
+    }
+  };
+
   const [companies, setCompanies] = useState([]);
 
   // ＋植えるフォームの入力内容を覚えておく箱
@@ -195,6 +224,14 @@ function App() {
   const [sortType, setSortType] = useState("growth"); // "interest" | "growth" | "new"
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
 
+  // ---- 小さな動き（アニメーション）のための目印 ----
+  const [rematchStep, setRematchStep] = useState(0);              // AI照合を待つ間の言葉が、今何番目か
+  const [matchesRevealing, setMatchesRevealing] = useState(false); // 照合結果を、上から順に見せている最中かどうか
+  const [justGrew, setJustGrew] = useState(false);                // 企業詳細を開いている間に、植物が育った直後かどうか
+  const [justAdded, setJustAdded] = useState(null);               // 追加した直後の記録の種類（"good" | "concern" | "memo" | null）
+  const revealTimerRef = useRef(null);    // 「順に見せている最中」の目印を外すタイマー
+  const justAddedTimerRef = useRef(null); // 「追加した直後」の目印を外すタイマー
+
   // ＋植える画面の「この会社、今どんな感じ？」（1つだけ選べる）
   const [moodChip, setMoodChip] = useState(null);
   const moodOptions = ["ちょっと気になる", "応募してみたい", "選考が進んでいる"];
@@ -225,6 +262,15 @@ function App() {
   const [editingConditionValue, setEditingConditionValue] = useState("");
   // 希望条件の画面を閉じた時に、戻る画面（null = タブ表示 / "detail" = 企業詳細 / "plant-new" = ＋植える画面）
   const [conditionsReturnTo, setConditionsReturnTo] = useState(null);
+
+  // 今、企業詳細で開いている企業のid（開いていなければ null）
+  // 保存の処理が終わった時に「まだ同じ企業を開いているか」を確かめるために使う
+  const openCompanyIdRef = useRef(null);
+
+  // 求人票の本文の保存状況を覚えておく箱
+  //   text    … 最後に保存した（または、今まさに保存している）本文
+  //   promise … 保存の処理そのもの。「保存が終わるまで待つ」ために使う
+  const jobTextSaveRef = useRef({ text: "", promise: Promise.resolve() });
 
   // --- 【関数の準備】 ---
 
@@ -306,8 +352,18 @@ function App() {
     if (data) setCompanyRecords(data);
   };
 
+  // 追加した直後の記録に、目印を付ける（ふわっと現れる動きを付けるため）。少し経ったら外す
+  // kind: "good"（いいな）| "concern"（気になる）| "memo"（メモ）
+  const flashNewItem = (kind) => {
+    setJustAdded(kind);
+    clearTimeout(justAddedTimerRef.current);
+    justAddedTimerRef.current = setTimeout(() => setJustAdded(null), 900);
+  };
+
   // 企業詳細画面を開く（一覧・ホームどちらから呼んでも同じ動きになるようまとめておく）
-  const openDetail = (company) => {
+  // skipTour: true にすると、初めて開いた時でも2ステップツアーを出さない
+  const openDetail = (company, { skipTour = false } = {}) => {
+    openCompanyIdRef.current = company.id;
     setSelectedCompany(company);
     fetchImpressions(company.id);
     fetchHonne(company.id);
@@ -318,6 +374,8 @@ function App() {
     setShowAllRecords(false);
     setShowJobTextEditor(false);
     setJobTextDraft(company.job_text || "");
+    // 「今、保存されている本文」として、この企業の本文を覚えておく
+    jobTextSaveRef.current = { text: company.job_text || "", promise: Promise.resolve() };
     setEditingSelectionFlow(false);
     setSelectionFlowDraft(company.selection_flow || "");
     setFlowFolded(false);
@@ -329,38 +387,31 @@ function App() {
     setRematchError(null);
     setAddingMemo(false);
     setEditingMemoId(null);
+    // 前に開いていた企業の「動きの目印」が残らないよう、外しておく
+    setMatchesRevealing(false);
+    setJustAdded(null);
     setScreen("detail");
+
+    // 企業詳細を初めて開いた時だけ、気づきにくい操作を2か所だけ案内する
+    if (!skipTour) {
+      let tourSeen = false;
+      try {
+        tourSeen = localStorage.getItem(DETAIL_TOUR_SEEN_KEY) === "1";
+      } catch {
+        tourSeen = true; // 読み出せない時は、毎回出てしまわないよう「見た」ものとして扱う
+      }
+      if (!tourSeen) setDetailTourOpen(true);
+    }
   };
 
   // 企業詳細画面を閉じて、タブ表示に戻る
   const closeDetail = () => {
+    // 求人票の本文を書きかけのまま閉じた時も、消えないように保存しておく
+    // （スワイプで戻った時は「欄の外をタップ」が起きないため、ここでも保存する）
+    saveJobText();
+    openCompanyIdRef.current = null;
     setScreen(null);
     setSelectedCompany(null);
-  };
-
-  // 問いかけカードのボタンを押した時：その種類の入力欄を開いて、そこまでスクロールし、ふちを光らせる
-  const goToKind = (kind) => {
-    if (kind === "job_text") setShowJobTextEditor(true); // 求人票の本文欄を開く
-    if (kind === "impression") startAddImpression("good"); // 「いいな」の入力欄を開く
-    if (kind === "honne") setEditingHonne(true);           // 本音の入力欄を開く
-    if (kind === "memo") startAddMemo();                   // メモの入力欄を開く
-
-    // 入力欄が画面に出るのを少し待ってから、その欄を探す
-    setTimeout(() => {
-      // 求人票の欄は、クラス名で探す。
-      // ほかの3つは autoFocus でカーソルが入るので、「今カーソルが入っている欄」がそのまま目的の欄になる
-      const el =
-        kind === "job_text"
-          ? document.querySelector(".job-text-editor .job-textarea")
-          : document.activeElement;
-      // 見つからない時や、カード自身のボタンにカーソルが残っている時は、何もしない
-      if (!el || el === document.body || el.closest(".next-step-card")) return;
-
-      if (kind === "job_text") el.focus({ preventScroll: true });
-      el.scrollIntoView({ behavior: "smooth", block: "center" }); // 画面の中央あたりまでスクロール
-      el.classList.add("guide-flash");                             // ふちを光らせる
-      setTimeout(() => el.classList.remove("guide-flash"), 1800);  // 光り終わったら、目印を外す
-    }, 50);
   };
 
   // 「植えた直後の提案」画面で「照合してみる」を選んだ時の処理
@@ -373,7 +424,8 @@ function App() {
       interest_level: 3,
       growth_stage: postPlantCompany.sprouted ? "sprout" : "seed",
     };
-    openDetail(company);
+    // すぐにAI照合が始まるので、ここではツアーを出さない（次に開いた時に出る）
+    openDetail(company, { skipTour: true });
     setPostPlantCompany(null);
     await rematch(company); // company_idを明示的に渡すので、画面切り替えのタイミングに影響されない
   };
@@ -580,10 +632,12 @@ function App() {
       body: bodyBytes,
     });
 
-    fetchImpressions(selectedCompany.id);
     fetchCompanies();
     fetchCompanyRecords(selectedCompany.id);
     fetchRecords();
+    // 一覧を取り直し終わってから、追加した1件に目印を付ける（ふわっと現れる動きのため）
+    await fetchImpressions(selectedCompany.id);
+    flashNewItem(type);
   };
 
   // ＋追加チップをタップして、新規入力を始める
@@ -672,6 +726,10 @@ function App() {
 
       fetchMe(); // デモの人の残り回数を最新にする
       await fetchRequirementMatches(company.id);
+      // 結果の○△×を、上から順にぽつぽつと見せる。見せ終わったら、目印を外す
+      setMatchesRevealing(true);
+      clearTimeout(revealTimerRef.current);
+      revealTimerRef.current = setTimeout(() => setMatchesRevealing(false), 2500);
       fetchAiSuggestions(company.id);
       fetchCompanies();
       fetchCompanyRecords(company.id);
@@ -685,18 +743,52 @@ function App() {
     }
   };
 
+  // 求人票の本文を保存する（本文欄の外をタップした時・企業詳細を閉じた時・AI照合の前に呼ばれる）
+  // 中身が変わっていなければ、APIは呼ばない。
+  // 返すのは「保存の処理」そのもの。await saveJobText() と書くと、保存が終わるまで待てる
+  const saveJobText = () => {
+    const company = selectedCompany;
+    const saved = jobTextSaveRef.current;
+    // すでに保存済み、または同じ内容を保存している最中なら、その処理をそのまま返す
+    // （欄の外をタップ → すぐAI照合ボタン、のように続けて呼ばれても、二重に保存しないため）
+    if (!company || jobTextDraft === saved.text) return saved.promise;
+
+    const text = jobTextDraft;
+    const promise = (async () => {
+      await saved.promise; // 前の保存がまだ終わっていなければ、終わるのを待つ（順番が入れ替わらないように）
+
+      const res = await apiFetch(`/companies/${company.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: JSON.stringify({ job_text: text }),
+      });
+      if (!res.ok) {
+        // 保存できなかったので、「保存済みの本文」の記録を元に戻す（次の機会に、もう一度保存を試せるように）
+        if (jobTextSaveRef.current.text === text) {
+          jobTextSaveRef.current = { text: saved.text, promise: Promise.resolve() };
+        }
+        alert("求人票の本文の保存に失敗しました");
+        return;
+      }
+
+      // 画面に表示中の内容も更新する（保存している間に別の企業を開いていたら、何もしない）
+      setSelectedCompany((prev) => (prev && prev.id === company.id ? { ...prev, job_text: text } : prev));
+      fetchCompanies(); // 初めて求人票を入れた時は、成長段階が変わることがある
+      fetchRecords();
+      if (openCompanyIdRef.current === company.id) fetchCompanyRecords(company.id);
+    })();
+
+    jobTextSaveRef.current = { text, promise };
+    return promise;
+  };
+
   // 求人票の本文を保存してから、続けてAIに再照合してもらう
   const saveJobTextAndRematch = async () => {
     // 押した時点で、求人票の本文欄を閉じる
     // （長い本文が開いたままだと、すぐ上に出る照合結果やエラーが画面の外に行ってしまうため）
     setShowJobTextEditor(false);
 
-    await apiFetch(`/companies/${selectedCompany.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json; charset=utf-8" },
-      body: JSON.stringify({ job_text: jobTextDraft }),
-    });
-    setSelectedCompany((prev) => prev && { ...prev, job_text: jobTextDraft });
+    await saveJobText(); // 保存が終わるのを待ってから照合する（古い本文で照合されないように）
     await rematch();
   };
 
@@ -854,10 +946,12 @@ function App() {
       body: bodyBytes,
     });
 
-    fetchMemos(selectedCompany.id);
     fetchCompanies();
     fetchCompanyRecords(selectedCompany.id);
     fetchRecords();
+    // 一覧を取り直し終わってから、追加した1件に目印を付ける（ふわっと現れる動きのため）
+    await fetchMemos(selectedCompany.id);
+    flashNewItem("memo");
   };
 
   // ＋追加チップをタップして、新規メモの入力を始める
@@ -990,6 +1084,8 @@ function App() {
       setPostPlantCompany(null);
       setMe({ isDemo: false, rematchRemaining: null, rematchLimit: 3 });
       setLogoutConfirmOpen(false);
+      setDetailTourOpen(false);
+      openCompanyIdRef.current = null;
       setScreen(null);
       setActiveTab("home");
     }
@@ -1007,6 +1103,38 @@ function App() {
   useEffect(() => {
     document.body.classList.toggle("dark", darkMode);
   }, [darkMode]);
+
+  // AI照合を待っている間、言葉を数秒ごとに切り替える（最後の言葉まで来たら、そこで止める）
+  useEffect(() => {
+    if (!isRematching) return;
+    setRematchStep(0); // 照合を始めるたびに、最初の言葉から
+    const timer = setInterval(() => {
+      setRematchStep((prev) => Math.min(prev + 1, REMATCH_STEPS.length - 1));
+    }, REMATCH_STEP_MS);
+    return () => clearInterval(timer); // 照合が終わったら、切り替えを止める
+  }, [isRematching]);
+
+  // 企業詳細を開いている間に、植物が育ったら、その瞬間だけ目印を付ける（鉢が弾む・ひとことが入れ替わる動きのため）
+  // 「同じ企業のまま、段階が前より進んだ時」だけを対象にする（企業を開いた瞬間や、別の企業に移った時は対象外）
+  const lastStageRef = useRef({ id: null, stage: null }); // 直前に表示していた企業のidと成長段階
+  const shownCompanyId = selectedCompany?.id ?? null;
+  const shownStage = selectedCompany?.growth_stage ?? null;
+  useEffect(() => {
+    const prev = lastStageRef.current;
+    lastStageRef.current = { id: shownCompanyId, stage: shownStage };
+
+    // 別の企業に移った（または閉じた）時は、目印を外すだけ
+    if (shownCompanyId === null || prev.id !== shownCompanyId) {
+      setJustGrew(false);
+      return;
+    }
+    // 段階が変わっていない・前より進んでいない時は、何もしない
+    if (!prev.stage || !shownStage || STAGE_RANK[shownStage] <= STAGE_RANK[prev.stage]) return;
+
+    setJustGrew(true);
+    const timer = setTimeout(() => setJustGrew(false), 1600); // 動きが終わったら、目印を外す
+    return () => clearTimeout(timer);
+  }, [shownCompanyId, shownStage]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -1093,6 +1221,13 @@ function App() {
   const flowIsLong =
     !!selectedCompany?.selection_flow &&
     selectedCompany.selection_flow.split("\n").length > FLOW_FOLD_LINES;
+
+  // 希望条件との照合の表に出す行
+  // AI照合を待っている間は、希望条件の名前を先に並べて、○△×の場所だけ「考え中」の表示にする
+  // （何が返ってくるかが先に見えると、待たされている感じが減るため）
+  const matchRows = isRematching
+    ? desiredConditions.map((c) => ({ condition_id: c.id, label: c.label, pending: true }))
+    : requirementMatches;
 
   // AI照合の失敗の案内（コードに対応する文言を選ぶ。知らないコードの時は、Workerのメッセージをそのまま使う）
   const rematchErrorInfo = !rematchError
@@ -1263,7 +1398,8 @@ function App() {
                 )}
               </div>
 
-              <div className="detail-plant">
+              {/* just-grew：開いている間に植物が育った直後だけ付く目印（鉢が弾み、ひとことがふわっと入れ替わる） */}
+              <div className={justGrew ? "detail-plant just-grew" : "detail-plant"}>
                 <PottedPlant company={selectedCompany} width={120} />
                 <p className="stage-caption">
                   {STAGE_CAPTION[selectedCompany.growth_stage] || STAGE_CAPTION.seed}
@@ -1303,9 +1439,6 @@ function App() {
                 </button>
               </div>
 
-              {/* まだ書いていない記録を、問いかけの形で1つだけ案内する（花が咲いたら出さない） */}
-              <NextStepCard company={selectedCompany} onAction={goToKind} />
-
               <div className="detail-body">
 
                 <div className="section-block">
@@ -1321,26 +1454,41 @@ function App() {
                     <p className="field-label">
                       希望条件との照合<span className="field-label-sub">（タップで直せます）</span>
                     </p>
-                    <table className="req-table">
+                    {/* revealing：照合が終わった直後だけ付く目印（○△×が、上から順にぽつぽつと現れる） */}
+                    <table className={matchesRevealing ? "req-table revealing" : "req-table"}>
                       <tbody>
-                        {requirementMatches.map((m) => (
-                          <tr key={m.condition_id}>
-                            <td>{m.label}</td>
-                            <td
-                              className={`mark ${m.mark} editable`}
-                              onClick={() => cycleMark(m)}
-                            >
-                              {m.mark === "yes" ? "○" : m.mark === "mid" ? "△" : "×"}{" "}
-                              <span className={m.manually_edited ? "mark-note dimmed" : "mark-note"}>
-                                {m.note}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
+                        {matchRows.map((m, i) =>
+                          m.pending ? (
+                            // AI照合を待っている間の行：条件の名前だけ先に出して、結果の場所は「考え中」の点にする
+                            <tr key={m.condition_id}>
+                              <td>{m.label}</td>
+                              <td className="mark pending">
+                                <span className="mark-wait" style={{ animationDelay: `${i * 0.15}s` }}>
+                                  <i></i><i></i><i></i>
+                                </span>
+                              </td>
+                            </tr>
+                          ) : (
+                            <tr key={m.condition_id}>
+                              <td>{m.label}</td>
+                              <td
+                                className={`mark ${m.mark} editable`}
+                                // 上の行から順に、少しずつ遅らせて現れるようにする
+                                style={matchesRevealing ? { animationDelay: `${i * 0.14}s` } : undefined}
+                                onClick={() => cycleMark(m)}
+                              >
+                                {m.mark === "yes" ? "○" : m.mark === "mid" ? "△" : "×"}{" "}
+                                <span className={m.manually_edited ? "mark-note dimmed" : "mark-note"}>
+                                  {m.note}
+                                </span>
+                              </td>
+                            </tr>
+                          )
+                        )}
                       </tbody>
                     </table>
                     <button
-                      className="rematch-btn"
+                      className={isRematching ? "rematch-btn busy" : "rematch-btn"}
                       onClick={saveJobTextAndRematch}
                       disabled={isRematching || (me.isDemo && me.rematchRemaining === 0)}
                     >
@@ -1348,8 +1496,9 @@ function App() {
                         "デモでのAI照合は上限に達しました"
                       ) : isRematching ? (
                         <>
-                          <span className="spinner"></span>
-                          照合中...
+                          {/* くるくる回る輪の代わりに、双葉がゆらゆら揺れる */}
+                          <span className="rematch-sprout"><SproutIcon size={16} /></span>
+                          照合しています
                         </>
                       ) : requirementMatches.length === 0 ? (
                         "AIに求人内容と希望条件を照らし合わせてもらう"
@@ -1363,8 +1512,9 @@ function App() {
                       </p>
                     )}
                     {isRematching && (
-                      <p className="rematch-hint">
-                        求人票を読んで、選考フローや質問の候補もまとめて考えています
+                      // key を付けて、言葉が切り替わるたびに、ふわっと出る動きを最初から再生する
+                      <p className="rematch-hint" key={rematchStep}>
+                        {REMATCH_STEPS[rematchStep]}
                       </p>
                     )}
                     {rematchErrorInfo && !isRematching && (
@@ -1393,6 +1543,9 @@ function App() {
                       </div>
                     )}
 
+                    {/* 関連リンク（採用ページ・企業HPなど）。key を付けて、企業が変わったら中身を作り直す */}
+                    <CompanyLinks key={selectedCompany.id} companyId={selectedCompany.id} apiFetch={apiFetch} />
+
                     <div className="job-text-block">
                       <p
                         className="field-label job-text-toggle"
@@ -1405,13 +1558,15 @@ function App() {
                       </p>
                       {showJobTextEditor && (
                         <div className="job-text-editor">
+                          {/* 欄の外をタップすると、本文を保存する */}
                           <textarea
                             className="form-textarea job-textarea"
                             value={jobTextDraft}
                             onChange={(e) => setJobTextDraft(e.target.value)}
+                            onBlur={saveJobText}
                           />
                           <p className="job-text-warning">
-                            貼り直しただけでは上の照合結果は変わりません。反映するには上部の「AIにもう一度照らし合わせてもらう」ボタンを押してください
+                            欄の外をタップすると保存します。上の照合結果に反映するには、「AIにもう一度照らし合わせてもらう」ボタンを押してください
                           </p>
 
                           {/* 求人ページのURL：タップすると、その場で書き換えられる（本文と同じ開閉の中に入れている） */}
@@ -1444,7 +1599,8 @@ function App() {
                 </div>
 
                 <div className="section-block">
-                  <div className="block">
+                  {/* data-tour：2ステップツアーが、この場所を探すための目印 */}
+                  <div className="block" data-tour="feelings">
                     <p className="section-h">
                       <svg className="section-icon" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M5 13 C5 8 8.5 5 13 5 C17 5 20 7.8 20 11.5 C20 15.2 17 18 13 18 C11.8 18 10.7 17.8 9.7 17.4 L6 19 L7 15.8 C5.7 14.8 5 13.5 5 13 Z" />
@@ -1454,7 +1610,7 @@ function App() {
 
                     <p className="field-label">いいなと思ったこと</p>
                     <div className="chip-row">
-                      {impressions.filter((imp) => imp.type === "good").map((imp) =>
+                      {impressions.filter((imp) => imp.type === "good").map((imp, i) =>
                         editingImpressionId === imp.id ? (
                           <input
                             key={imp.id}
@@ -1466,7 +1622,12 @@ function App() {
                             onKeyDown={blurOnEnter}
                           />
                         ) : (
-                          <div className="chip removable" key={imp.id} onClick={() => startEditImpression(imp)}>
+                          <div
+                            // just-added：追加した直後の1件だけに付く目印（ふわっと現れる）。新しいものが先頭に並ぶ
+                            className={justAdded === "good" && i === 0 ? "chip removable just-added" : "chip removable"}
+                            key={imp.id}
+                            onClick={() => startEditImpression(imp)}
+                          >
                             <span className="chip-text">{imp.content}</span>
                             <span
                               className="chip-x"
@@ -1496,7 +1657,7 @@ function App() {
 
                     <p className="field-label" style={{ marginTop: "14px" }}>気になること</p>
                     <div className="chip-row">
-                      {impressions.filter((imp) => imp.type === "concern").map((imp) =>
+                      {impressions.filter((imp) => imp.type === "concern").map((imp, i) =>
                         editingImpressionId === imp.id ? (
                           <input
                             key={imp.id}
@@ -1508,7 +1669,11 @@ function App() {
                             onKeyDown={blurOnEnter}
                           />
                         ) : (
-                          <div className="chip removable" key={imp.id} onClick={() => startEditImpression(imp)}>
+                          <div
+                            className={justAdded === "concern" && i === 0 ? "chip removable just-added" : "chip removable"}
+                            key={imp.id}
+                            onClick={() => startEditImpression(imp)}
+                          >
                             <span className="chip-text">{imp.content}</span>
                             <span
                               className="chip-x"
@@ -1627,7 +1792,7 @@ function App() {
                     <p className="field-label" style={{ marginTop: "14px" }}>確認したいこと・選考メモ</p>
                     {/* メモは1件ずつカードで並べる（長い文は枠の幅で折り返し、書いた改行もそのまま表示） */}
                     <div className="memo-list">
-                      {memos.map((memo) =>
+                      {memos.map((memo, i) =>
                         editingMemoId === memo.id ? (
                           <AutoTextarea
                             key={memo.id}
@@ -1638,7 +1803,11 @@ function App() {
                             onBlur={commitEditMemo}
                           />
                         ) : (
-                          <div className="memo-card" key={memo.id} onClick={() => startEditMemo(memo)}>
+                          <div
+                            className={justAdded === "memo" && i === 0 ? "memo-card just-added" : "memo-card"}
+                            key={memo.id}
+                            onClick={() => startEditMemo(memo)}
+                          >
                             <span className="memo-card-text">{memo.content}</span>
                             <span
                               className="memo-card-x"
@@ -1987,7 +2156,7 @@ function App() {
               <div className="block" style={{ marginBottom: 0 }}>
                 <p className="field-label">使用技術</p>
                 <p className="about-text">
-                  React ・ Cloudflare Workers ・ Cloudflare D1 ・ Gemini API
+                  React ・ Clerk ・ Vercel ・ Cloudflare Workers ・ Cloudflare D1 ・ Gemini API
                 </p>
               </div>
 
@@ -2074,7 +2243,7 @@ function App() {
                   デモの人には、時間帯（空の色）を切り替えるスライダーも出す */}
                   <Garden
                     companies={companies.filter((c) => !c.is_sleeping)}
-                    onSelect={openDetail}
+                    onSelect={(c) => openDetail(c)}
                     showTimeSlider={me.isDemo}
                   />
 
@@ -2542,6 +2711,11 @@ function App() {
         {/* ============ 使い方ポップアップ（初回だけ自動で表示。設定タブからも開ける） ============ */}
         {onboardingOpen && (
           <Onboarding isDemo={me.isDemo} rematchLimit={me.rematchLimit} onClose={closeOnboarding} />
+        )}
+
+        {/* ============ 企業詳細の2ステップツアー（企業詳細を初めて開いた時だけ） ============ */}
+        {detailTourOpen && screen === "detail" && selectedCompany && !onboardingOpen && (
+          <DetailTour onClose={closeDetailTour} />
         )}
 
         {/* ============ ログアウトの確認（画面の中央に重ねて表示） ============ */}
