@@ -221,7 +221,8 @@ body {
 }
 
 .company-row {
-  display: flex;          /* 植物・企業名・★・ハートを横に並べる */
+  display: flex;
+  /* 植物・企業名・★・ハートを横に並べる */
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
@@ -843,7 +844,8 @@ body {
   font-size: 12.5px;
   font-weight: 700;
   padding: 8px 14px;
-  border-radius: 999px; /* 両端を完全に丸くする（ピル型） */
+  border-radius: 999px;
+  /* 両端を完全に丸くする（ピル型） */
   border: none;
   cursor: pointer;
   box-shadow: 0 3px 8px rgba(79, 122, 85, 0.25);
@@ -992,7 +994,7 @@ body {
   cursor: pointer;
 }
 
-.section-h.timeline-header > span:first-child {
+.section-h.timeline-header>span:first-child {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1144,7 +1146,8 @@ body {
   font-size: 16px;
   flex-shrink: 0;
   padding: 4px 6px;
-  touch-action: none; /* ドラッグ中にスマホの画面スクロールと競合しないようにする */
+  touch-action: none;
+  /* ドラッグ中にスマホの画面スクロールと競合しないようにする */
   user-select: none;
   cursor: grab;
 }
@@ -1640,8 +1643,10 @@ body {
    画面幅が広い時だけ、.page をスマホサイズのカードにして、中身は枠の内側でスクロールさせる。
    スマホ（幅600px未満）では、ここは一切効かない */
 :root {
-  --desk-bg: #D9DED6;                       /* 枠の外側（机）の色 */
-  --frame-shadow: rgba(38, 59, 51, 0.25);   /* カードの影 */
+  --desk-bg: #D9DED6;
+  /* 枠の外側（机）の色 */
+  --frame-shadow: rgba(38, 59, 51, 0.25);
+  /* カードの影 */
 }
 
 body.dark {
@@ -1651,10 +1656,13 @@ body.dark {
 
 /* ---------- ログイン画面：Clerkのログインフォームを、画面の中央に置く ---------- */
 .login-screen {
-  min-height: 100svh;      /* 画面の高さいっぱいを使う */
+  min-height: 100svh;
+  /* 画面の高さいっぱいを使う */
   display: flex;
-  align-items: center;     /* 上下の中央 */
-  justify-content: center; /* 左右の中央 */
+  align-items: center;
+  /* 上下の中央 */
+  justify-content: center;
+  /* 左右の中央 */
   padding: 24px 16px;
   box-sizing: border-box;
 }
@@ -1684,7 +1692,8 @@ body.dark {
   padding: 10px 8px 8px;
   margin-bottom: 18px;
   position: relative;
-  isolation: isolate; /* 星のレイヤー（::before）を、空の上・庭の下に置くため */
+  isolation: isolate;
+  /* 星のレイヤー（::before）を、空の上・庭の下に置くため */
   overflow: hidden;
   transition: --sky-top 0.8s ease, --sky-bottom 0.8s ease;
 }
@@ -1709,10 +1718,26 @@ body.dark {
 }
 
 /* ---------- 時間帯で変わる空 ---------- */
-.garden-sky-morning { --sky-top: #DCEFE6; --sky-bottom: #FCF3D3; }
-.garden-sky-day     { --sky-top: #D6E8EC; --sky-bottom: #F6F2E6; }
-.garden-sky-evening { --sky-top: #F4C9B6; --sky-bottom: #F8EADC; }
-.garden-sky-night   { --sky-top: #2E3A55; --sky-bottom: #55607C; --garden-text: #D9DEEA; }
+.garden-sky-morning {
+  --sky-top: #DCEFE6;
+  --sky-bottom: #FCF3D3;
+}
+
+.garden-sky-day {
+  --sky-top: #D6E8EC;
+  --sky-bottom: #F6F2E6;
+}
+
+.garden-sky-evening {
+  --sky-top: #F4C9B6;
+  --sky-bottom: #F8EADC;
+}
+
+.garden-sky-night {
+  --sky-top: #2E3A55;
+  --sky-bottom: #55607C;
+  --garden-text: #D9DEEA;
+}
 
 /* 夜は、星を見せて、庭全体を少しだけ暗くする */
 .garden-sky-night::before {
@@ -1729,10 +1754,29 @@ body.dark {
 
 /* ダークモードの時は、空を「深い色」にする（明るい空だけが浮いて見えないように）
    灰色に寄せるとくすんで見えるので、色みは残したまま暗くしている */
-body.dark .garden-sky-morning { --sky-top: #2C5A6E; --sky-bottom: #C9C48F; --garden-text: #2C3F3A; }
-body.dark .garden-sky-day     { --sky-top: #244E66; --sky-bottom: #4F8791; --garden-text: #DDEAEC; }
-body.dark .garden-sky-evening { --sky-top: #41305C; --sky-bottom: #B8644F; --garden-text: #F0DFD8; }
-body.dark .garden-sky-night   { --sky-top: #232B40; --sky-bottom: #2B322A; --garden-text: var(--ink-soft); }
+body.dark .garden-sky-morning {
+  --sky-top: #2C5A6E;
+  --sky-bottom: #C9C48F;
+  --garden-text: #2C3F3A;
+}
+
+body.dark .garden-sky-day {
+  --sky-top: #244E66;
+  --sky-bottom: #4F8791;
+  --garden-text: #DDEAEC;
+}
+
+body.dark .garden-sky-evening {
+  --sky-top: #41305C;
+  --sky-bottom: #B8644F;
+  --garden-text: #F0DFD8;
+}
+
+body.dark .garden-sky-night {
+  --sky-top: #232B40;
+  --sky-bottom: #2B322A;
+  --garden-text: var(--ink-soft);
+}
 
 /* ダークモードでは、床の白さがまぶしくならないよう、庭を少しだけ暗くする */
 body.dark .garden-stage {
@@ -1796,7 +1840,8 @@ body.dark .garden-sky-night .garden-stage {
 
 .garden-slot {
   position: absolute;
-  pointer-events: none; /* 画像の透明な部分ではタップを受けない（タップは下の .garden-slot-hit だけ） */
+  pointer-events: none;
+  /* 画像の透明な部分ではタップを受けない（タップは下の .garden-slot-hit だけ） */
 }
 
 /* 鉢の足元の影（床に置かれている感じを出す） */
@@ -1831,11 +1876,25 @@ body.dark .garden-sky-night .garden-stage {
 }
 
 @keyframes garden-pop {
-  0% { transform: scale(1); }
-  25% { transform: scale(1.12, 0.92); }
-  50% { transform: scale(0.95, 1.1); }
-  75% { transform: scale(1.03, 0.98); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(1);
+  }
+
+  25% {
+    transform: scale(1.12, 0.92);
+  }
+
+  50% {
+    transform: scale(0.95, 1.1);
+  }
+
+  75% {
+    transform: scale(1.03, 0.98);
+  }
+
+  100% {
+    transform: scale(1);
+  }
 }
 
 .garden-slot-hit {
@@ -1855,7 +1914,8 @@ body.dark .garden-sky-night .garden-stage {
 /* ---------- 鉢をタップした時の吹き出し（企業名・ステータス・ひとことメモ） ---------- */
 .garden-balloon {
   position: absolute;
-  z-index: 1000; /* どの鉢よりも手前に出す */
+  z-index: 1000;
+  /* どの鉢よりも手前に出す */
   transform: translate(-50%, -100%);
   margin-top: -6px;
   max-width: 62%;
@@ -1900,8 +1960,15 @@ body.dark .garden-sky-night .garden-stage {
 }
 
 @keyframes garden-balloon-in {
-  from { opacity: 0; transform: translate(-50%, -92%) scale(0.92); }
-  to { opacity: 1; transform: translate(-50%, -100%) scale(1); }
+  from {
+    opacity: 0;
+    transform: translate(-50%, -92%) scale(0.92);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, -100%) scale(1);
+  }
 }
 
 .garden-empty {
@@ -2020,18 +2087,40 @@ body.dark .garden-sky-night .garden-stage {
 }
 
 /* ---------- 植物が風でゆっくり揺れる（背が高いほど、少し大きく揺れる） ---------- */
-.sway-sprout { animation: plant-sway-small 5s ease-in-out infinite; }
-.sway-bud    { animation: plant-sway 6s ease-in-out infinite; }
-.sway-flower { animation: plant-sway 7s ease-in-out infinite; }
+.sway-sprout {
+  animation: plant-sway-small 5s ease-in-out infinite;
+}
+
+.sway-bud {
+  animation: plant-sway 6s ease-in-out infinite;
+}
+
+.sway-flower {
+  animation: plant-sway 7s ease-in-out infinite;
+}
 
 @keyframes plant-sway {
-  0%, 100% { transform: rotate(-1.7deg); }
-  50% { transform: rotate(1.7deg); }
+
+  0%,
+  100% {
+    transform: rotate(-1.7deg);
+  }
+
+  50% {
+    transform: rotate(1.7deg);
+  }
 }
 
 @keyframes plant-sway-small {
-  0%, 100% { transform: rotate(-2.4deg); }
-  50% { transform: rotate(2.4deg); }
+
+  0%,
+  100% {
+    transform: rotate(-2.4deg);
+  }
+
+  50% {
+    transform: rotate(2.4deg);
+  }
 }
 
 /* ---------- 花が咲いた鉢の、小さな光 ---------- */
@@ -2041,17 +2130,33 @@ body.dark .garden-sky-night .garden-stage {
   top: 6%;
   font-size: 9px;
   line-height: 1;
-  color: #FFF3C4;
-  text-shadow: 0 0 4px rgba(255, 214, 120, 0.9);
+  color: #FFFFFF;                              /* 淡い黄色 → 白（茶色の床の上でも見える） */
+  text-shadow:
+    0 0 3px rgba(255, 196, 80, 0.95),          /* まわりに、濃いめの黄色のにじみ */
+    0 0 7px rgba(255, 180, 60, 0.6);           /* さらに外側に、うすいにじみ */
   opacity: 0;
   pointer-events: none;
   animation: plant-twinkle 6s ease-in-out infinite;
 }
 
 @keyframes plant-twinkle {
-  0%, 70%, 100% { opacity: 0; transform: scale(0.4) rotate(0deg); }
-  80% { opacity: 1; transform: scale(1.2) rotate(20deg); }
-  90% { opacity: 0; transform: scale(0.6) rotate(40deg); }
+
+  0%,
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(0.4) rotate(0deg);
+  }
+
+  80% {
+    opacity: 1;
+    transform: scale(1.2) rotate(20deg);
+  }
+
+  90% {
+    opacity: 0;
+    transform: scale(0.6) rotate(40deg);
+  }
 }
 
 /* ---------- 植える場面（種が飛んできて、鉢に着地する） ----------
@@ -2060,7 +2165,8 @@ body.dark .garden-sky-night .garden-stage {
   position: relative;
   width: 170px;
   margin: 0 auto;
-  aspect-ratio: 512 / 500; /* 画像(512×768px)のうち、鉢のまわり（下の500px分）だけを見せる */
+  aspect-ratio: 512 / 500;
+  /* 画像(512×768px)のうち、鉢のまわり（下の500px分）だけを見せる */
 }
 
 /* 鉢・種・芽を、元の画像と同じ 512×768 の比率で重ねる土台 */
@@ -2094,11 +2200,25 @@ body.dark .garden-sky-night .garden-stage {
 }
 
 @keyframes planting-squash {
-  0% { transform: scale(1, 1); }
-  25% { transform: scale(1.1, 0.88); }
-  55% { transform: scale(0.95, 1.07); }
-  80% { transform: scale(1.02, 0.98); }
-  100% { transform: scale(1, 1); }
+  0% {
+    transform: scale(1, 1);
+  }
+
+  25% {
+    transform: scale(1.1, 0.88);
+  }
+
+  55% {
+    transform: scale(0.95, 1.07);
+  }
+
+  80% {
+    transform: scale(1.02, 0.98);
+  }
+
+  100% {
+    transform: scale(1, 1);
+  }
 }
 
 /* 種：横は一定の速さ、縦はだんだん速く（落ちる動き）。合わせると弧になる */
@@ -2111,14 +2231,29 @@ body.dark .garden-sky-night .garden-stage {
 }
 
 @keyframes planting-seed-x {
-  0% { transform: translateX(52%); opacity: 0; }
-  15% { opacity: 1; }
-  100% { transform: translateX(0); opacity: 1; }
+  0% {
+    transform: translateX(52%);
+    opacity: 0;
+  }
+
+  15% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 @keyframes planting-seed-y {
-  0% { transform: translateY(-36%) rotate(-50deg); }
-  100% { transform: translateY(0) rotate(0deg); }
+  0% {
+    transform: translateY(-36%) rotate(-50deg);
+  }
+
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
 }
 
 /* 芽：ふだんは隠しておく。芽が出る場合だけ、土の位置から伸びてくる */
@@ -2136,18 +2271,34 @@ body.dark .garden-sky-night .garden-stage {
 }
 
 @keyframes planting-sprout {
-  0% { opacity: 0; transform: scale(0.1); }
-  30% { opacity: 1; }
-  100% { opacity: 1; transform: scale(1); }
+  0% {
+    opacity: 0;
+    transform: scale(0.1);
+  }
+
+  30% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 @keyframes planting-seed-fade {
-  from { opacity: 1; }
-  to { opacity: 0; }
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
 }
 
 /* 動きを減らす設定にしている人には、揺れ・光・弾みを止めて、結果だけを見せる */
 @media (prefers-reduced-motion: reduce) {
+
   .potted-plant-plant,
   .plant-sparkle,
   .garden-slot.just-grew .potted-plant,
@@ -2231,7 +2382,7 @@ body.dark .garden-sky-night .garden-stage {
     display: none;
   }
 
-  .page > * {
+  .page>* {
     flex-shrink: 0;
   }
 
@@ -2255,7 +2406,7 @@ body.dark .garden-sky-night .garden-stage {
     padding-bottom: 24px;
   }
 
-    /* PC表示では、外側（#root）がすでに中央寄せ・余白ありなので、高さの指定を外す */
+  /* PC表示では、外側（#root）がすでに中央寄せ・余白ありなので、高さの指定を外す */
   .login-screen {
     min-height: auto;
     padding: 0;
@@ -2346,6 +2497,7 @@ body.dark .garden-sky-night .garden-stage {
   Safariは、文字サイズが16px未満の入力欄にフォーカスすると自動でズームするため、
    iPhone・iPadの時だけ入力欄の文字を16pxにする（PC・Androidの見た目は変わらない） */
 @supports (-webkit-touch-callout: none) {
+
   .form-input,
   .form-textarea,
   .chip-edit-input,
@@ -2356,7 +2508,7 @@ body.dark .garden-sky-night .garden-stage {
   }
 }
 
-  /* ---------- ログイン画面：アプリ名・デモボタン ---------- */
+/* ---------- ログイン画面：アプリ名・デモボタン ---------- */
 .login-inner {
   width: 100%;
   max-width: 400px;
@@ -2532,13 +2684,25 @@ body.dark .garden-sky-night .garden-stage {
 }
 
 @keyframes modal-fade {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes modal-pop {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* ---------- AI照合が失敗した時の案内 ---------- */
@@ -2686,16 +2850,25 @@ body.dark .garden-sky-night .garden-stage {
 
 /* ---------- 植えた直後の画面：文字とボタンを、アニメーションに合わせて順に出す ---------- */
 .post-plant-reveal {
-  animation: post-plant-reveal 0.5s ease 1.5s both; /* 種が着地したあとに出す */
+  animation: post-plant-reveal 0.5s ease 1.5s both;
+  /* 種が着地したあとに出す */
 }
 
 .post-plant-reveal.late {
-  animation-delay: 2.6s; /* 芽が出る場合は、芽が出てからボタンを出す */
+  animation-delay: 2.6s;
+  /* 芽が出る場合は、芽が出てからボタンを出す */
 }
 
 @keyframes post-plant-reveal {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* 「さっそく芽が出ました」は、芽が出るのと同じタイミングで出す */
@@ -2708,6 +2881,7 @@ body.dark .garden-sky-night .garden-stage {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .post-plant-reveal,
   .post-plant-sprouted {
     animation: none;
@@ -2751,13 +2925,15 @@ body.dark ::selection {
 /* ---- 確認したいこと・選考メモ：1件ずつカードで並べる ---- */
 .memo-list {
   display: flex;
-  flex-direction: column; /* 縦に並べる */
+  flex-direction: column;
+  /* 縦に並べる */
   gap: 8px;
 }
 
 .memo-card {
   display: flex;
-  align-items: flex-start; /* ×は1行目の高さにそろえる */
+  align-items: flex-start;
+  /* ×は1行目の高さにそろえる */
   gap: 8px;
   padding: 10px 12px;
   background: var(--bg);
@@ -2768,12 +2944,15 @@ body.dark ::selection {
 
 .memo-card-text {
   flex: 1;
-  min-width: 0;             /* これが無いと、長い文字が枠を押し広げてはみ出す */
+  min-width: 0;
+  /* これが無いと、長い文字が枠を押し広げてはみ出す */
   font-size: 13.5px;
   line-height: 1.6;
   color: var(--ink);
-  white-space: pre-wrap;    /* 書いた改行をそのまま表示し、枠の幅で折り返す */
-  overflow-wrap: anywhere;  /* URLのような切れ目のない長い文字も、途中で折り返す */
+  white-space: pre-wrap;
+  /* 書いた改行をそのまま表示し、枠の幅で折り返す */
+  overflow-wrap: anywhere;
+  /* URLのような切れ目のない長い文字も、途中で折り返す */
 }
 
 .memo-card-x {
@@ -2810,8 +2989,10 @@ body.dark ::selection {
   font-size: 13.5px;
   line-height: 1.6;
   color: var(--ink);
-  resize: none;      /* 自動で伸びるので、つまみは出さない */
-  overflow: hidden;  /* 高さを中身に合わせるので、中のスクロールバーは出さない */
+  resize: none;
+  /* 自動で伸びるので、つまみは出さない */
+  overflow: hidden;
+  /* 高さを中身に合わせるので、中のスクロールバーは出さない */
   outline: none;
   box-sizing: border-box;
 }
@@ -2834,7 +3015,8 @@ body.dark ::selection {
 /* 「たたむ ▴／すべて見る ▾」のボタン */
 .fold-btn {
   display: block;
-  margin: 6px 0 0 auto; /* 右に寄せる */
+  margin: 6px 0 0 auto;
+  /* 右に寄せる */
   padding: 4px 6px;
   background: none;
   border: none;
@@ -2876,6 +3058,7 @@ body.dark ::selection {
 
 /* iPhoneで入力欄をタップした時に画面がズームしないよう、文字を16pxにする */
 @supports (-webkit-touch-callout: none) {
+
   .memo-edit,
   .flow-edit {
     font-size: 16px;
@@ -2887,7 +3070,8 @@ body.dark ::selection {
    土台は、ログアウト確認と同じ .modal-overlay / .modal-box を使っている
    ============================================================ */
 .onboarding-box {
-  position: relative; /* 右上の「スキップ」を置く基準にする */
+  position: relative;
+  /* 右上の「スキップ」を置く基準にする */
   max-width: 340px;
   padding-top: 34px;
 }
@@ -2936,7 +3120,8 @@ body.dark ::selection {
 }
 
 .onboarding-stage {
-  position: relative; /* 矢印を置く基準にする */
+  position: relative;
+  /* 矢印を置く基準にする */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3031,11 +3216,16 @@ body.dark ::selection {
 .onboarding-scroll {
   display: flex;
   overflow-x: auto;
-  scroll-snap-type: x mandatory;   /* 指を離したら、近いほうのページでぴたっと止まる */
-  overscroll-behavior-x: contain;  /* 端まで来た時に、後ろの画面まで一緒に動かないようにする */
-  scrollbar-width: none;           /* スクロールバーは出さない */
-  margin: 0 -20px;                 /* 箱の左右の余白ぶん広げる（ページが、箱の端から端まで動いて見えるように） */
-  user-select: none;               /* マウスでつかんだ時に、文字が選択されないようにする */
+  scroll-snap-type: x mandatory;
+  /* 指を離したら、近いほうのページでぴたっと止まる */
+  overscroll-behavior-x: contain;
+  /* 端まで来た時に、後ろの画面まで一緒に動かないようにする */
+  scrollbar-width: none;
+  /* スクロールバーは出さない */
+  margin: 0 -20px;
+  /* 箱の左右の余白ぶん広げる（ページが、箱の端から端まで動いて見えるように） */
+  user-select: none;
+  /* マウスでつかんだ時に、文字が選択されないようにする */
   cursor: grab;
 }
 
@@ -3050,10 +3240,13 @@ body.dark ::selection {
 }
 
 .onboarding-page {
-  flex: 0 0 100%;             /* 1枚が、入れ物の横幅ちょうどになる */
+  flex: 0 0 100%;
+  /* 1枚が、入れ物の横幅ちょうどになる */
   scroll-snap-align: center;
-  scroll-snap-stop: always;   /* 勢いよくスライドしても、1枚ずつ止まる */
-  padding: 0 20px;            /* 上で広げたぶん、中身は内側に戻す */
+  scroll-snap-stop: always;
+  /* 勢いよくスライドしても、1枚ずつ止まる */
+  padding: 0 20px;
+  /* 上で広げたぶん、中身は内側に戻す */
   box-sizing: border-box;
 }
 
@@ -3073,8 +3266,10 @@ body.dark ::selection {
   position: fixed;
   border-radius: 12px;
   box-shadow:
-    0 0 0 2px rgba(255, 255, 255, 0.75),   /* 明るい範囲のふち */
-    0 0 0 9999px rgba(20, 30, 25, 0.55);   /* まわりの暗い部分 */
+    0 0 0 2px rgba(255, 255, 255, 0.75),
+    /* 明るい範囲のふち */
+    0 0 0 9999px rgba(20, 30, 25, 0.55);
+  /* まわりの暗い部分 */
   pointer-events: none;
 }
 
@@ -3164,8 +3359,15 @@ body.dark ::selection {
 }
 
 @keyframes caption-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ---- 2. AI照合：待っている間の表示 ---- */
@@ -3183,26 +3385,65 @@ body.dark ::selection {
   border-radius: 50%;
   background: var(--moss);
   animation: mark-wait 1s ease-in-out infinite;
-  animation-delay: inherit; /* 行ごとのずれ（App.jsx で指定）を、そのまま受け取る */
+  animation-delay: inherit;
+  /* 行ごとのずれ（App.jsx で指定）を、そのまま受け取る */
 }
 
 /* 2つ目・3つ目の点は、少しずつ遅らせる */
-.mark-wait i:nth-child(2) { margin-top: 0; animation-name: mark-wait-2; }
-.mark-wait i:nth-child(3) { animation-name: mark-wait-3; }
+.mark-wait i:nth-child(2) {
+  margin-top: 0;
+  animation-name: mark-wait-2;
+}
+
+.mark-wait i:nth-child(3) {
+  animation-name: mark-wait-3;
+}
 
 @keyframes mark-wait {
-  0%, 60%, 100% { transform: translateY(0); opacity: 0.35; }
-  20% { transform: translateY(-3px); opacity: 1; }
+
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+
+  20% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
 }
 
 @keyframes mark-wait-2 {
-  0%, 15%, 75%, 100% { transform: translateY(0); opacity: 0.35; }
-  35% { transform: translateY(-3px); opacity: 1; }
+
+  0%,
+  15%,
+  75%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+
+  35% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
 }
 
 @keyframes mark-wait-3 {
-  0%, 30%, 90%, 100% { transform: translateY(0); opacity: 0.35; }
-  50% { transform: translateY(-3px); opacity: 1; }
+
+  0%,
+  30%,
+  90%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+
+  50% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
 }
 
 /* ボタンの中の双葉（くるくる回る輪の代わり）。緑のボタンの上でも見えるよう、白い丸の上に置く */
@@ -3225,8 +3466,13 @@ body.dark ::selection {
 }
 
 @keyframes rematch-sway {
-  from { transform: rotate(-14deg); }
-  to { transform: rotate(14deg); }
+  from {
+    transform: rotate(-14deg);
+  }
+
+  to {
+    transform: rotate(14deg);
+  }
 }
 
 /* 照合中は、ボタンを薄くしない（押せないボタンは薄くなる指定を、ここだけ打ち消す） */
@@ -3240,8 +3486,15 @@ body.dark ::selection {
 }
 
 @keyframes hint-in {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ---- 2. AI照合：結果が出た時（○△×が、上から順にぽつぽつと現れる） ---- */
@@ -3251,9 +3504,20 @@ body.dark ::selection {
 }
 
 @keyframes mark-in {
-  0% { opacity: 0; transform: scale(0.7); }
-  60% { opacity: 1; transform: scale(1.08); }
-  100% { opacity: 1; transform: scale(1); }
+  0% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+
+  60% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* ---- 3. 記録を追加した時（追加した1件だけが、ふわっと現れる） ---- */
@@ -3263,9 +3527,20 @@ body.dark ::selection {
 }
 
 @keyframes item-in {
-  0% { opacity: 0; transform: translateY(6px) scale(0.96); }
-  60% { opacity: 1; transform: translateY(0) scale(1.03); }
-  100% { opacity: 1; transform: translateY(0) scale(1); }
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+
+  60% {
+    opacity: 1;
+    transform: translateY(0) scale(1.03);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 /* ---- 4. 画面の切り替え（重ねる画面を開く時に、下から軽く上がってくる） ---- */
@@ -3278,12 +3553,20 @@ body.dark ::selection {
 }
 
 @keyframes screen-in {
-  from { opacity: 0; transform: translateY(14px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* 動きを減らす設定にしている人には、上の動きをすべて止める */
 @media (prefers-reduced-motion: reduce) {
+
   .detail-plant.just-grew .potted-plant,
   .detail-plant.just-grew .stage-caption,
   .mark-wait i,
@@ -3334,7 +3617,8 @@ body.dark ::selection {
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis; /* 長い名前は「…」で省略する */
+  text-overflow: ellipsis;
+  /* 長い名前は「…」で省略する */
 }
 
 /* くさりのアイコン：タップすると開くものだと分かるようにする印 */
@@ -3371,7 +3655,8 @@ body.dark ::selection {
   padding: 12px;
   background: var(--bg);
   border-radius: 12px;
-  animation: item-in 0.3s ease-out both; /* 開く時に、ふわっと出す */
+  animation: item-in 0.3s ease-out both;
+  /* 開く時に、ふわっと出す */
 }
 
 /* 名前の候補 */
@@ -3441,4 +3726,84 @@ body.dark ::selection {
   .link-form {
     animation: none;
   }
+}
+
+/* ============================================================
+   入力が長すぎる時に、欄の下に出す案内（求人票の本文）
+   ============================================================ */
+.form-over {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--coral);
+  margin: 6px 2px 0;
+}
+
+/* ============================================================
+   企業一覧：希望条件との照合結果を、植物のアイコンの下に小さな点で出す
+   ○＝塗りつぶした点、△＝ふちだけの点。×は出さない
+   同じ緑のまま、形で区別する（色に頼らず、△だけが目立たないように）
+   ============================================================ */
+
+/* 行の左側：植物のアイコンと、その下の点を、中央にそろえて縦に並べる */
+.row-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.match-dots {
+  display: flex;
+  flex-wrap: wrap;
+  /* 幅を超えたら、次の段に折り返す（幅は、App.jsx で個数に合わせて決めている） */
+  justify-content: center;
+  gap: 2px;
+  min-height: 5px;
+  /* 点が無い行でも場所を空けて、行の高さをそろえる */
+}
+
+.match-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+/* ○：緑で塗りつぶす */
+.match-dot.yes {
+  background: var(--moss-deep);
+}
+
+.match-dot.mid {
+  background: var(--moss);
+  opacity: 0.55;
+}
+
+/* ============================================================
+   ホーム：お気に入りカードの志望度（★）
+   ============================================================ */
+.plant-card .card-stars {
+  margin-top: 8px;
+  min-height: 1.2em;
+  /* ★が少なくても、カードの高さが変わらないようにする */
+  color: var(--terracotta);
+  font-size: 11px;
+  letter-spacing: 1px;
+  line-height: 1.2;
+}
+
+/* ============================================================
+   ＋植える画面：「入力をクリア」
+   ============================================================ */
+.form-clear-btn {
+  margin-left: auto;
+  /* 右端に寄せる */
+  padding: 6px 4px;
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--ink-soft);
+  cursor: pointer;
 }

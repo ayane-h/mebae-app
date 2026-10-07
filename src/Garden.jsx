@@ -19,9 +19,24 @@ import flowerdaisy from "./assets/garden/plant-flower-daisy.png";
 import flowerbellflower from "./assets/garden/plant-flower-bellflower.png";
 import Nemophila from "./assets/garden/plant-flower-Nemophila.png";
 
-// 鉢・花の種類。画像を増やしたら、ここに足すだけでよい
+// 鉢の種類。画像を増やしたら、ここに足すだけでよい
 const POTS = [potTerracotta, potDark];
-const FLOWERS = [flowerSunflower, flowerTulip, flowerdaisy, flowerbellflower, Nemophila];
+
+// 花の種類。画像を増やしたら、ここに1行足す。
+// 花によって背の高さや絵の位置が違うので、必要な花にだけ、花ごとの設定を書ける（書かなければ、下の共通の値を使う）
+//   image   … 画像
+//   crop    … 小さいアイコン用の切り取り範囲（左上の x, y と、一辺の長さ size）。画像(512×768px)の中での位置
+//   top     … 植物のてっぺんの高さ（画像の上からのpx）。庭の吹き出しを、この少し上に出す
+//   sparkle … キラキラを出す位置（画像の左から x％、上から y％）
+const FLOWERS = [
+  { image: flowerSunflower },
+  { image: flowerTulip },
+  // デイジー：背が低めなので、アイコンは花のまわりだけを切り取る。キラキラも花の右上に寄せる
+  { image: flowerdaisy, crop: { x: 80, y: 236, size: 310 }, top: 260, sparkle: { x: 64, y: 34 } },
+  { image: flowerbellflower },
+  // ネモフィラ：いちばん背が低い。鉢のふちにかかるくらいの位置に描いてある
+  { image: Nemophila, crop: { x: 77, y: 313, size: 350 }, top: 368, sparkle: { x: 68, y: 46 } },
+];
 
 // 成長段階 → 植物の画像（花だけは種類があるので、下の関数で選ぶ）
 const PLANT_BY_STAGE = {
@@ -36,19 +51,29 @@ function potImageFor(company) {
   return POTS[company.id % POTS.length];
 }
 
+// その企業の花の種類（FLOWERS の中の1つ）を返す
+function flowerFor(company) {
+  // 番号が1つ進むごとに、花も1つ進める（続けて植えた企業が、同じ花にならないように）。
+  // さらに、花を1周するごとに1つずらす（鉢の種類との組み合わせが、偏らないように）
+  const n = FLOWERS.length;
+  return FLOWERS[(company.id + Math.floor(company.id / n)) % n];
+}
+
 function plantImageFor(company) {
-  if (company.growth_stage === "flower") {
-    // 鉢の種類と花の種類の組み合わせが偏らないよう、鉢とは別の割り方をする
-    return FLOWERS[Math.floor(company.id / POTS.length) % FLOWERS.length];
-  }
+  if (company.growth_stage === "flower") return flowerFor(company).image;
   return PLANT_BY_STAGE[company.growth_stage] || plantSeed;
 }
+
+// キラキラを出す位置の、共通の値（花ごとの設定が無い時に使う）
+const SPARKLE_DEFAULT = { x: 66, y: 6 };
 
 // ---- 鉢＋植物 ----
 // width: 表示する横幅(px)。高さは画像の比率(2:3)で自動的に決まる
 // swayDelay: 植物が風で揺れ始めるまでの時間(秒)。鉢ごとにずらすと、全部が同じ動きにならない
 export function PottedPlant({ company, width, swayDelay = 0 }) {
   const stage = company.growth_stage || "seed";
+  // キラキラの位置は、花ごとの設定があればそれを、無ければ共通の値を使う
+  const sparkle = stage === "flower" ? flowerFor(company).sparkle || SPARKLE_DEFAULT : SPARKLE_DEFAULT;
   return (
     <span className="potted-plant" style={width ? { width: `${width}px` } : undefined}>
       <img className="potted-plant-pot" src={potImageFor(company)} alt="" draggable="false" />
@@ -59,9 +84,18 @@ export function PottedPlant({ company, width, swayDelay = 0 }) {
         draggable="false"
         style={{ animationDelay: `${swayDelay}s` }}
       />
-      {/* 花が咲いた鉢には、ときどき小さな光を出す */}
+      {/* 花が咲いた鉢には、ときどき小さな光を出す（位置は、花の背の高さに合わせる） */}
       {stage === "flower" && (
-        <span className="plant-sparkle" style={{ animationDelay: `${swayDelay + 1.5}s` }}>✦</span>
+        <span
+          className="plant-sparkle"
+          style={{
+            left: `${sparkle.x}%`,
+            top: `${sparkle.y}%`,
+            animationDelay: `${swayDelay + 1.5}s`,
+          }}
+        >
+          ✦
+        </span>
       )}
     </span>
   );
@@ -70,6 +104,7 @@ export function PottedPlant({ company, width, swayDelay = 0 }) {
 // ---- 植物だけ（小さいアイコン用） ----
 // 512×768pxの画像のうち、植物が描かれている部分だけを正方形に切り取って表示する。
 // 段階ごとに植物の大きさが違うので、切り取る範囲（左上のx, y と、一辺の長さ size）も段階ごとに決めている
+// （花は、花ごとの設定があればそちらを優先する。ここの flower は、設定が無い花のための共通の値）
 const ICON_CROP = {
   seed: { x: 191, y: 435, size: 150 },
   sprout: { x: 128, y: 330, size: 250 },
@@ -77,8 +112,14 @@ const ICON_CROP = {
   flower: { x: 6, y: 30, size: 500 },
 };
 
+// その企業のアイコンの切り取り範囲を返す
+function iconCropFor(company) {
+  if (company.growth_stage === "flower") return flowerFor(company).crop || ICON_CROP.flower;
+  return ICON_CROP[company.growth_stage] || ICON_CROP.seed;
+}
+
 export function PlantIcon({ company, size }) {
-  const crop = ICON_CROP[company.growth_stage] || ICON_CROP.seed;
+  const crop = iconCropFor(company);
   return (
     <span className="plant-icon" style={{ width: `${size}px`, height: `${size}px` }}>
       <img
@@ -97,7 +138,7 @@ export function PlantIcon({ company, size }) {
 
 // ---- 植える場面（「◯◯を植えました」の画面で使う） ----
 // 種が右上から飛んできて、鉢の土に着地する → 鉢がふにょっと弾む →（sprouts が true なら）芽が出る。
-// 動きはすべてCSSのアニメーション（garden.css の planting-◯◯）で、ここでは絵を重ねているだけ
+// 動きはすべてCSSのアニメーション（App.css の planting-◯◯）で、ここでは絵を重ねているだけ
 // company: { id } があればよい（どの鉢を使うかを id から決めるため）
 export function PlantingScene({ company, sprouts = false }) {
   return (
@@ -147,7 +188,14 @@ const POT_SCALE = 0.23;   // 床に対する、鉢＋植物の画像の大きさ
 const POT_ANCHOR = { x: 256, y: 730 }; // 鉢＋植物の画像(512×768px)の中での、鉢の底の中心
 
 // 鉢＋植物の画像(512×768px)の中での、植物のてっぺんの高さ（段階ごと）。吹き出しを、この少し上に出す
+// （花は、花ごとの設定があればそちらを優先する。ここの flower は、設定が無い花のための共通の値）
 const PLANT_TOP = { seed: 432, sprout: 398, bud: 170, flower: 54 };
+
+// その企業の植物の、てっぺんの高さを返す
+function plantTopFor(company) {
+  if (company.growth_stage === "flower") return flowerFor(company).top ?? PLANT_TOP.flower;
+  return PLANT_TOP[company.growth_stage] || PLANT_TOP.seed;
+}
 
 // 今の時刻から、空の色の種類を決める（朝・昼・夕方・夜）
 function skyPeriodOf(date) {
@@ -341,7 +389,8 @@ export function Garden({ companies, onSelect, period, showTimeSlider = false }) 
               {page.map((company, i) => {
                 if (company.id !== selectedId) return null;
                 const slot = SLOTS[i];
-                const plantTop = PLANT_TOP[company.growth_stage] || PLANT_TOP.seed;
+                // 植物のてっぺんの高さ（花は、種類ごとに背の高さが違う）
+                const plantTop = plantTopFor(company);
                 // 吹き出しの下端を合わせる高さ（植物のてっぺん）
                 const tipY = slot.y + STAGE_TOP - (POT_ANCHOR.y - plantTop) * POT_SCALE;
                 // 左右の端の鉢でも、吹き出しが庭からはみ出さないよう、横の位置を内側に寄せる

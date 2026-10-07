@@ -12,6 +12,10 @@ const ONBOARDING_SEEN_KEY = "mebae-onboarding-seen";
 // 企業詳細の2ステップツアーを「もう見た」ことを、このブラウザに覚えておくための名前
 const DETAIL_TOUR_SEEN_KEY = "mebae-detail-tour-seen";
 
+// 企業タブの並び替えの選択を、このブラウザに覚えておくための名前と、選べる種類
+const SORT_TYPE_KEY = "mebae-sort-type";
+const SORT_TYPES = ["interest", "growth", "new"];
+
 // APIの場所。ローカルでは自分のPCで動かしているWorker。
 // Vercelなどで公開する時は、環境変数 VITE_API_BASE_URL に本番のWorkerのURLを入れて切り替える
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8787";
@@ -130,6 +134,57 @@ const STAGE_CAPTION = {
 // ひとことメモの最大文字数（バックエンドの SHORT_MEMO_MAX と同じ値にしておく）
 const SHORT_MEMO_MAX = 10;
 
+// 希望条件の件数の上限と、1件の最大文字数（バックエンドの CONDITIONS_MAX / CONDITION_LABEL_MAX と同じ値にしておく）
+const CONDITIONS_MAX = 10;
+const CONDITION_LABEL_MAX = 30;
+
+// 求人票の本文の最大文字数（バックエンドの JOB_TEXT_MAX と同じ値にしておく）
+const JOB_TEXT_MAX = 10000;
+
+// 求人票の本文が長すぎる時に出す案内（今の文字数も一緒に見せる）
+const jobTextOverMessage = (length) =>
+  `求人票の本文は${JOB_TEXT_MAX.toLocaleString("ja-JP")}文字までです（今は${length.toLocaleString("ja-JP")}文字）。求人の部分だけを貼り付けてください`;
+
+// 照合結果の点の大きさ・すき間(px)と、1段に並べる個数の上限
+// （大きさとすき間は、App.css の .match-dot / .match-dots と同じ値にしておく）
+const MATCH_DOT_SIZE = 5;
+const MATCH_DOT_GAP = 2;
+const MATCH_DOTS_ONE_ROW_MAX = 5; // アイコンの横幅（34px）に収まる数
+
+// 希望条件との照合結果を、小さな点で見せる部品（企業一覧で、植物のアイコンの下に置く）
+// marks: "yes" | "mid" | "no" の配列
+// ○は塗りつぶした点、△はふちだけの点で出す。×は出さない（合っている数が、ぱっと分かるように）
+// 並べる順は、○を先に、△をあとに（数として読みやすくするため）
+function MatchDots({ marks }) {
+  const list = Array.isArray(marks) ? marks : [];
+  const yesCount = list.filter((m) => m === "yes").length;
+  const midCount = list.filter((m) => m === "mid").length;
+  const total = yesCount + midCount;
+
+  // 出す点が無い時（まだ照合していない・○も△も無い）も、入れ物だけは置いておく
+  // （点がある行と無い行で、行の高さが変わらないようにするため）
+  if (total === 0) return <div className="match-dots"></div>;
+
+  // 5個までは1段。6個以上の時は、半分ずつの2段に分ける（6個→3＋3、10個→5＋5）
+  const perRow = total <= MATCH_DOTS_ONE_ROW_MAX ? total : Math.ceil(total / 2);
+  // 1段に perRow 個が収まる幅（点の幅 × 個数 ＋ すき間 ×（個数 − 1））。これを超えると、次の段に折り返す
+  const maxWidth = perRow * MATCH_DOT_SIZE + (perRow - 1) * MATCH_DOT_GAP;
+
+  // 画面を読み上げる人のために、言葉でも内容を伝える
+  const label = `希望条件との照合：○${yesCount}・△${midCount}`;
+
+  return (
+    <div className="match-dots" role="img" aria-label={label} style={{ maxWidth: `${maxWidth}px` }}>
+      {Array.from({ length: yesCount }).map((_, i) => (
+        <span key={`yes-${i}`} className="match-dot yes"></span>
+      ))}
+      {Array.from({ length: midCount }).map((_, i) => (
+        <span key={`mid-${i}`} className="match-dot mid"></span>
+      ))}
+    </div>
+  );
+}
+
 function App() {
   // ログイン状態と、APIに添えるトークンを取り出す（Clerkの部品）
   const { getToken, isLoaded, isSignedIn } = useAuth();
@@ -221,7 +276,15 @@ function App() {
   const [showAllLog, setShowAllLog] = useState(false); // 「最近の記録」を全件表示するかどうか
   const [showSleeping, setShowSleeping] = useState(false); // 眠らせた企業を開いて見せるかどうか
   const [filterType, setFilterType] = useState("all"); // "all" | "progress" | "fav"
-  const [sortType, setSortType] = useState("growth"); // "interest" | "growth" | "new"
+  // 並び替えの種類（"interest" | "growth" | "new"）。前に選んだものを覚えていれば、それで始める
+  const [sortType, setSortType] = useState(() => {
+    try {
+      const saved = localStorage.getItem(SORT_TYPE_KEY);
+      return SORT_TYPES.includes(saved) ? saved : "growth"; // 覚えていない・知らない値の時は「育ってきた順」
+    } catch {
+      return "growth"; // 読み出せない時も「育ってきた順」
+    }
+  });
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
 
   // ---- 小さな動き（アニメーション）のための目印 ----
@@ -517,11 +580,16 @@ function App() {
 
   const commitAddCondition = async () => {
     if (newConditionValue.trim()) {
-      await apiFetch("/desired-conditions", {
+      const res = await apiFetch("/desired-conditions", {
         method: "POST",
         headers: { "Content-Type": "application/json; charset=utf-8" },
         body: JSON.stringify({ label: newConditionValue.trim() }),
       });
+      if (!res.ok) {
+        // 件数の上限に達している など。Workerが返した理由をそのまま見せる
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || "希望条件の追加に失敗しました");
+      }
       fetchDesiredConditions();
     }
     setAddingCondition(false);
@@ -568,11 +636,15 @@ function App() {
   const commitEditCondition = async () => {
     const trimmed = editingConditionValue.trim();
     if (trimmed && editingConditionId) {
-      await apiFetch(`/desired-conditions/${editingConditionId}`, {
+      const res = await apiFetch(`/desired-conditions/${editingConditionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json; charset=utf-8" },
         body: JSON.stringify({ label: trimmed }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || "希望条件の保存に失敗しました");
+      }
       fetchDesiredConditions();
     }
     setEditingConditionId(null);
@@ -752,6 +824,8 @@ function App() {
     // すでに保存済み、または同じ内容を保存している最中なら、その処理をそのまま返す
     // （欄の外をタップ → すぐAI照合ボタン、のように続けて呼ばれても、二重に保存しないため）
     if (!company || jobTextDraft === saved.text) return saved.promise;
+    // 長すぎる時は、保存しない（本文欄の下に、案内を出している）
+    if (jobTextDraft.length > JOB_TEXT_MAX) return saved.promise;
 
     const text = jobTextDraft;
     const promise = (async () => {
@@ -784,6 +858,13 @@ function App() {
 
   // 求人票の本文を保存してから、続けてAIに再照合してもらう
   const saveJobTextAndRematch = async () => {
+    // 本文が長すぎる時は、照合しない。本文欄を開いて、直せるようにする
+    if (jobTextDraft.length > JOB_TEXT_MAX) {
+      setShowJobTextEditor(true);
+      alert(jobTextOverMessage(jobTextDraft.length));
+      return;
+    }
+
     // 押した時点で、求人票の本文欄を閉じる
     // （長い本文が開いたままだと、すぐ上に出る照合結果やエラーが画面の外に行ってしまうため）
     setShowJobTextEditor(false);
@@ -870,6 +951,7 @@ function App() {
       headers: { "Content-Type": "application/json; charset=utf-8" },
       body: JSON.stringify({ mark: nextMark }),
     });
+    fetchCompanies(); // 企業一覧の「照合結果の点」にも、直した内容を反映する
   };
 
   // 本音の取得・保存
@@ -1136,8 +1218,33 @@ function App() {
     return () => clearTimeout(timer);
   }, [shownCompanyId, shownStage]);
 
+  // ＋植える画面の入力を、すべて空に戻す
+  const resetPlantForm = () => {
+    setCompanyName("");
+    setJobUrl("");
+    setJobText("");
+    setMoodChip(null);
+    setReasonChips([]);
+    setFreeReason("");
+  };
+
+  // 「入力をクリア」を押した時：うっかり押して消えてしまわないよう、確かめてから消す
+  const clearPlantForm = () => {
+    if (window.confirm("入力した内容を、すべて消しますか？")) resetPlantForm();
+  };
+
+  // ＋植える画面に、何か入力が残っているかどうか（残っている時だけ「入力をクリア」を出す）
+  const plantFormHasInput =
+    !!companyName || !!jobUrl || !!jobText || !!moodChip || reasonChips.length > 0 || !!freeReason;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // 求人票の本文が長すぎる時は、登録しない（入力した内容は、そのまま残す）
+    if (jobText.length > JOB_TEXT_MAX) {
+      alert(jobTextOverMessage(jobText.length));
+      return;
+    }
 
     const body = JSON.stringify({
       company_name: companyName,
@@ -1153,7 +1260,9 @@ function App() {
       body: bodyBytes,
     });
     if (!res.ok) {
-      alert("企業の登録に失敗しました。もう一度お試しください。");
+      // Workerが理由を返していれば、それを見せる
+      const err = await res.json().catch(() => ({}));
+      alert(err.error || "企業の登録に失敗しました。もう一度お試しください。");
       return;
     }
     const data = await res.json();
@@ -1181,12 +1290,7 @@ function App() {
 
     // フォームの中身を全部リセットする（会社名は、提案画面に表示するため先に控えておく）
     const registeredName = companyName;
-    setCompanyName("");
-    setJobUrl("");
-    setJobText("");
-    setMoodChip(null);
-    setReasonChips([]);
-    setFreeReason("");
+    resetPlantForm();
 
     fetchCompanies();
     fetchRecords();
@@ -1513,7 +1617,8 @@ function App() {
                     )}
                     {isRematching && (
                       // key を付けて、言葉が切り替わるたびに、ふわっと出る動きを最初から再生する
-                      <p className="rematch-hint" key={rematchStep}>
+                      // （同じ場所に並ぶほかの部品の key と重ならないよう、頭に名前を付けている）
+                      <p className="rematch-hint" key={`rematch-hint-${rematchStep}`}>
                         {REMATCH_STEPS[rematchStep]}
                       </p>
                     )}
@@ -1543,8 +1648,9 @@ function App() {
                       </div>
                     )}
 
-                    {/* 関連リンク（採用ページ・企業HPなど）。key を付けて、企業が変わったら中身を作り直す */}
-                    <CompanyLinks key={selectedCompany.id} companyId={selectedCompany.id} apiFetch={apiFetch} />
+                    {/* 関連リンク（採用ページ・企業HPなど）。key を付けて、企業が変わったら中身を作り直す
+                        （同じ場所に並ぶほかの部品の key と重ならないよう、頭に名前を付けている） */}
+                    <CompanyLinks key={`links-${selectedCompany.id}`} companyId={selectedCompany.id} apiFetch={apiFetch} />
 
                     <div className="job-text-block">
                       <p
@@ -1565,6 +1671,12 @@ function App() {
                             onChange={(e) => setJobTextDraft(e.target.value)}
                             onBlur={saveJobText}
                           />
+                          {/* 長すぎる時だけ出す案内（このままでは保存されないことを伝える） */}
+                          {jobTextDraft.length > JOB_TEXT_MAX && (
+                            <p className="form-over">
+                              {jobTextOverMessage(jobTextDraft.length)}（このままでは保存されません）
+                            </p>
+                          )}
                           <p className="job-text-warning">
                             欄の外をタップすると保存します。上の照合結果に反映するには、「AIにもう一度照らし合わせてもらう」ボタンを押してください
                           </p>
@@ -1898,6 +2010,12 @@ function App() {
               <div className="screen-header">
                 <button className="back-btn" onClick={() => setScreen(null)}>←</button>
                 <span className="screen-title">新しい企業を植える</span>
+                {/* 前に入力した内容が残っている時だけ出す（残すのは、うっかり戻った時に消えないようにするため） */}
+                {plantFormHasInput && (
+                  <button type="button" className="form-clear-btn" onClick={clearPlantForm}>
+                    入力をクリア
+                  </button>
+                )}
               </div>
 
               {me.isDemo && (
@@ -1942,6 +2060,10 @@ function App() {
                     onChange={(e) => setJobText(e.target.value)}
                     placeholder="求人票の本文を貼り付けてください"
                   />
+                  {/* 長すぎる時だけ出す案内 */}
+                  {jobText.length > JOB_TEXT_MAX && (
+                    <p className="form-over">{jobTextOverMessage(jobText.length)}</p>
+                  )}
                   <p className="form-hint">
                     Ctrl+Aで全選択すると他社の情報も混ざることがあります。求人本文だけを範囲選択してコピペしてください。
                   </p>
@@ -2063,6 +2185,7 @@ function App() {
                         <input
                           className="chip-edit-input reorder-edit-input"
                           autoFocus
+                          maxLength={CONDITION_LABEL_MAX}
                           value={editingConditionValue}
                           onChange={(e) => setEditingConditionValue(e.target.value)}
                           onBlur={commitEditCondition}
@@ -2088,11 +2211,17 @@ function App() {
                     <input
                       className="chip-edit-input"
                       autoFocus
+                      maxLength={CONDITION_LABEL_MAX}
                       value={newConditionValue}
                       onChange={(e) => setNewConditionValue(e.target.value)}
                       onBlur={commitAddCondition}
                       onKeyDown={blurOnEnter}
                     />
+                  ) : desiredConditions.length >= CONDITIONS_MAX ? (
+                    // 上限に達している時は、「＋ 追加」の代わりに案内を出す
+                    <p className="edit-hint">
+                      希望条件は{CONDITIONS_MAX}件までです。足したい時は、どれかを消してください
+                    </p>
                   ) : (
                     <div className="chip add-chip" onClick={startAddCondition}>＋ 追加</div>
                   )}
@@ -2297,11 +2426,8 @@ function App() {
                             <div className="plant-card-icon"><PlantIcon company={c} size={64} /></div>
                             <div className="name">{c.company_name}</div>
                             <div className="status">{c.status}</div>
-                            <div className="heart-row">
-                              {[1, 2, 3, 4, 5].map((n) => (
-                                <span key={n} className={n <= c.interest_level ? "on" : ""}></span>
-                              ))}
-                            </div>
+                            {/* 志望度は、企業一覧と同じ★で見せる（丸だと、照合結果の点とまぎらわしいため） */}
+                            <div className="card-stars">{"★".repeat(c.interest_level)}</div>
                           </div>
                         ))}
                       </div>
@@ -2364,6 +2490,12 @@ function App() {
                               onClick={() => {
                                 setSortType(opt.key);
                                 setSortMenuOpen(false);
+                                // 選んだ並び替えを覚えておく（次に開いた時も、同じ並びで始める）
+                                try {
+                                  localStorage.setItem(SORT_TYPE_KEY, opt.key);
+                                } catch {
+                                  // 保存できなくても、並び替え自体には影響しない
+                                }
                               }}
                             >
                               {opt.label}
@@ -2381,7 +2513,11 @@ function App() {
                         className="company-row"
                         onClick={() => openDetail(company)}
                       >
-                        <span className="mini-plant"><PlantIcon company={company} size={30} /></span>
+                        {/* 左側：植物のアイコンと、その下に希望条件との照合結果の点 */}
+                        <div className="row-icon">
+                          <span className="mini-plant"><PlantIcon company={company} size={30} /></span>
+                          <MatchDots marks={company.match_marks} />
+                        </div>
                         <div className="row-main">
                           <div className="row-name">{company.company_name}</div>
                           {/* 選考ステータスの横に、ひとことメモを同じ行で並べる */}
@@ -2419,7 +2555,10 @@ function App() {
                           className="company-row"
                           onClick={() => openDetail(company)}
                         >
-                          <span className="mini-plant"><PlantIcon company={company} size={30} /></span>
+                          <div className="row-icon">
+                            <span className="mini-plant"><PlantIcon company={company} size={30} /></span>
+                            <MatchDots marks={company.match_marks} />
+                          </div>
                           <div className="row-main">
                             <div className="row-name">{company.company_name}</div>
                             {/* 選考ステータスの横に、ひとことメモを同じ行で並べる */}
