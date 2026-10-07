@@ -14,7 +14,7 @@ const DETAIL_TOUR_SEEN_KEY = "mebae-detail-tour-seen";
 
 // 企業タブの並び替えの選択を、このブラウザに覚えておくための名前と、選べる種類
 const SORT_TYPE_KEY = "mebae-sort-type";
-const SORT_TYPES = ["interest", "growth", "new"];
+const SORT_TYPES = ["interest", "match", "growth", "new"];
 
 // APIの場所。ローカルでは自分のPCで動かしているWorker。
 // Vercelなどで公開する時は、環境変数 VITE_API_BASE_URL に本番のWorkerのURLを入れて切り替える
@@ -33,6 +33,16 @@ const STAGE_LABEL = {
 
 // 成長段階の順番（数字が大きいほど育っている）。「前より育ったか」を比べるために使う
 const STAGE_RANK = { seed: 0, sprout: 1, bud: 2, flower: 3 };
+
+// 「条件が合う順」に並べるための点数：○が多いほど上。○が同じ数なら、△が多いほうを上にする。
+// まだ照合していない企業は、いちばん下に置く
+const matchScore = (company) => {
+  const marks = company.match_marks || [];
+  if (marks.length === 0) return -1;
+  const yesCount = marks.filter((m) => m === "yes").length;
+  const midCount = marks.filter((m) => m === "mid").length;
+  return yesCount * 100 + midCount; // ○1つは、△がいくつあっても上回る（条件は10件までなので、100倍で足りる）
+};
 
 // AI照合を待っている間に、順番に出す言葉（数秒ごとに切り替える。最後の言葉で止まる）
 const REMATCH_STEPS = [
@@ -1404,6 +1414,9 @@ function App() {
     if (sortType === "interest") {
       return b.interest_level - a.interest_level; // 志望度が高い順
     }
+    if (sortType === "match") {
+      return matchScore(b) - matchScore(a); // 条件が合う順
+    }
     if (sortType === "growth") {
       return STAGE_ORDER[b.growth_stage] - STAGE_ORDER[a.growth_stage]; // 育ってきた順
     }
@@ -2481,6 +2494,7 @@ function App() {
                         <div className="sort-menu open">
                           {[
                             { key: "interest", label: "志望度が高い順" },
+                            { key: "match", label: "条件が合う順" },
                             { key: "growth", label: "育ってきた順" },
                             { key: "new", label: "新しく保存した順" },
                           ].map((opt) => (

@@ -24,18 +24,19 @@ const POTS = [potTerracotta, potDark];
 
 // 花の種類。画像を増やしたら、ここに1行足す。
 // 花によって背の高さや絵の位置が違うので、必要な花にだけ、花ごとの設定を書ける（書かなければ、下の共通の値を使う）
+//   kind    … 花の名前。企業ごとに、データベースに保存してある（Workerの FLOWER_KINDS と同じ名前にしておく）
 //   image   … 画像
 //   crop    … 小さいアイコン用の切り取り範囲（左上の x, y と、一辺の長さ size）。画像(512×768px)の中での位置
 //   top     … 植物のてっぺんの高さ（画像の上からのpx）。庭の吹き出しを、この少し上に出す
 //   sparkle … キラキラを出す位置（画像の左から x％、上から y％）
 const FLOWERS = [
-  { image: flowerSunflower },
-  { image: flowerTulip },
+  { kind: "sunflower", image: flowerSunflower },
+  { kind: "tulip", image: flowerTulip },
   // デイジー：背が低めなので、アイコンは花のまわりだけを切り取る。キラキラも花の右上に寄せる
-  { image: flowerdaisy, crop: { x: 80, y: 236, size: 310 }, top: 260, sparkle: { x: 64, y: 34 } },
-  { image: flowerbellflower },
+  { kind: "daisy", image: flowerdaisy, crop: { x: 80, y: 236, size: 310 }, top: 260, sparkle: { x: 64, y: 34 } },
+  { kind: "bellflower", image: flowerbellflower },
   // ネモフィラ：いちばん背が低い。鉢のふちにかかるくらいの位置に描いてある
-  { image: Nemophila, crop: { x: 77, y: 313, size: 350 }, top: 368, sparkle: { x: 68, y: 46 } },
+  { kind: "nemophila", image: Nemophila, crop: { x: 77, y: 313, size: 350 }, top: 368, sparkle: { x: 68, y: 46 } },
 ];
 
 // 成長段階 → 植物の画像（花だけは種類があるので、下の関数で選ぶ）
@@ -45,16 +46,20 @@ const PLANT_BY_STAGE = {
   bud: plantBud,
 };
 
-// どの鉢・どの花になるかは、企業の番号(id)から決める
-// （同じ企業は、いつ開いても同じ鉢・同じ花になる。DBに保存しなくて済む）
+// どの鉢になるかは、企業の番号(id)から決める（同じ企業は、いつ開いても同じ鉢になる）
 function potImageFor(company) {
   return POTS[company.id % POTS.length];
 }
 
 // その企業の花の種類（FLOWERS の中の1つ）を返す
 function flowerFor(company) {
-  // 番号が1つ進むごとに、花も1つ進める（続けて植えた企業が、同じ花にならないように）。
-  // さらに、花を1周するごとに1つずらす（鉢の種類との組み合わせが、偏らないように）
+  // データベースに保存してある花の名前（flower_kind）があれば、その花にする
+  // （保存してあるので、花の種類を増やしても、咲いている花は入れ替わらない）
+  const saved = FLOWERS.find((f) => f.kind === company.flower_kind);
+  if (saved) return saved;
+
+  // 保存が無い時（使い方の見本のアイコンなど）は、番号(id)から決める。
+  // 番号が1つ進むごとに、花も1つ進める。さらに、花を1周するごとに1つずらす
   const n = FLOWERS.length;
   return FLOWERS[(company.id + Math.floor(company.id / n)) % n];
 }
@@ -169,7 +174,8 @@ export function SproutIcon({ size }) {
 // ---- 庭 ----
 // 床の画像(512×512px)の上での、鉢を置く場所（鉢の底の中心の座標）。
 // 奥の植物が手前の花で隠れにくいよう、列ごとに横へずらしつつ、床の中心線（x=255）で左右対称にしてある。
-// 企業は登録した順に、この順番で置かれる（手前の中央 → 奥の中央 → 左右のペア、の順でバランスよく埋まる）
+// 企業ごとの場所の番号（garden_slot）は、データベースに保存してある。0番がこの一覧の1つ目で、8番からは2つ目の庭になる
+// （空いている場所の小さい番号から埋まるので、手前の中央 → 奥の中央 → 左右のペア、の順でバランスよく埋まる）
 const SLOTS = [
   { x: 255, y: 372 }, // 手前の中央
   { x: 255, y: 188 }, // 奥の中央
@@ -321,14 +327,26 @@ export function Garden({ companies, onSelect, period, showTimeSlider = false }) 
     }
   };
 
-  // 登録した順（idの小さい順）に並べる。新しい企業を植えても、今までの鉢の位置は変わらない
+  // 登録した順（idの小さい順）に並べる
   const ordered = [...companies].sort((a, b) => a.id - b.id);
 
-  // 1つの庭に置けるのは SLOTS の数まで。超えた分は、次の庭（横スワイプ）に置く
-  const pages = [];
-  for (let i = 0; i < ordered.length; i += SLOTS.length) {
-    pages.push(ordered.slice(i, i + SLOTS.length));
-  }
+  // 鉢の場所は、企業ごとに保存してある番号（garden_slot）で決める。
+  // 眠らせた企業の場所だけが空き、ほかの鉢は動かない。
+  // 番号がまだ無い企業が混ざっている時（Workerが古い など）は、今までどおり、植えた順に前から詰めて置く
+  const hasSlots = ordered.every((c) => Number.isInteger(c.garden_slot) && c.garden_slot >= 0);
+
+  // 庭ごとに、「どの企業を、何番目の場所（pos）に置くか」をまとめる
+  // 1つの庭に置けるのは SLOTS の数まで。それより大きい番号は、次の庭（横スワイプ）に置く
+  const pageMap = new Map(); // 庭の番号 → [{ company, pos }, ...]
+  ordered.forEach((company, index) => {
+    const slotNo = hasSlots ? company.garden_slot : index;
+    const pageNo = Math.floor(slotNo / SLOTS.length);
+    if (!pageMap.has(pageNo)) pageMap.set(pageNo, []);
+    pageMap.get(pageNo).push({ company, pos: slotNo % SLOTS.length });
+  });
+
+  // 庭の番号順に並べる（1社も置かれていない庭は、とばす）
+  const pages = [...pageMap.keys()].sort((a, b) => a - b).map((pageNo) => pageMap.get(pageNo));
   if (pages.length === 0) pages.push([]); // 1社もない時も、空の庭を1つ見せる
 
   return (
@@ -354,8 +372,8 @@ export function Garden({ companies, onSelect, period, showTimeSlider = false }) 
                 draggable="false"
                 style={{ top: `${(STAGE_TOP / STAGE_HEIGHT) * 100}%` }}
               />
-              {page.map((company, i) => {
-                const slot = SLOTS[i];
+              {page.map(({ company, pos }) => {
+                const slot = SLOTS[pos];
                 return (
                   <div
                     className={[
@@ -371,7 +389,7 @@ export function Garden({ companies, onSelect, period, showTimeSlider = false }) 
                       zIndex: slot.y, // 手前（下）にある鉢ほど、上に重ねて描く
                     }}
                   >
-                    <PottedPlant company={company} swayDelay={(i * 0.7) % 4} />
+                    <PottedPlant company={company} swayDelay={(pos * 0.7) % 4} />
                     {/* タップできる範囲は、鉢のまわりだけにする（画像の透明な部分で、隣の鉢のタップを邪魔しないように） */}
                     <button
                       className="garden-slot-hit"
@@ -386,9 +404,9 @@ export function Garden({ companies, onSelect, period, showTimeSlider = false }) 
                 );
               })}
               {/* 吹き出し：タップした鉢の、植物のすぐ上に出す */}
-              {page.map((company, i) => {
+              {page.map(({ company, pos }) => {
                 if (company.id !== selectedId) return null;
-                const slot = SLOTS[i];
+                const slot = SLOTS[pos];
                 // 植物のてっぺんの高さ（花は、種類ごとに背の高さが違う）
                 const plantTop = plantTopFor(company);
                 // 吹き出しの下端を合わせる高さ（植物のてっぺん）
