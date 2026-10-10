@@ -207,6 +207,7 @@ function App() {
   const [demoStarting, setDemoStarting] = useState(false); // デモの庭を準備中かどうか
   const [demoError, setDemoError] = useState("");          // デモの準備に失敗した時のメッセージ
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false); // ログアウトの確認を表示中かどうか
+  const [loggingOut, setLoggingOut] = useState(false);     // ログアウト（デモの終了）の処理中かどうか（ボタンの連打を防ぐ）
 
   // ---- 使い方ポップアップ ----
   const [onboardingOpen, setOnboardingOpen] = useState(false); // 使い方ポップアップを表示中かどうか
@@ -386,6 +387,36 @@ function App() {
         rematchLimit: data.rematch_limit,
       });
     }
+  };
+
+  // ログアウトする。デモの時は、その前に、デモのデータを消してもらう
+  // （一度終了したデモには戻れないので、残しておかずに、その場で消す）
+  const handleLogout = async () => {
+    if (loggingOut) return; // 連打された時は、2回目以降を無視する
+    setLoggingOut(true);
+
+    if (me.isDemo) {
+      try {
+        // 必ずログアウトより前に呼ぶ（ログアウトすると、本人確認のトークンが無くなるため）
+        await apiFetch("/demo", { method: "DELETE" });
+      } catch (err) {
+        // 消せなかった時も、そのまま終了する（残ったデータは、定期実行があとで消してくれる）
+        console.error("デモの削除に失敗しました:", err);
+      }
+    }
+
+    try {
+      await signOut();
+    } catch (err) {
+      // デモのユーザーを消した直後は、ログアウトの通信が失敗することがある。
+      // その時は、ページを読み込み直す（ユーザーがもういないので、ログイン画面に戻る）
+      console.error("ログアウトに失敗しました:", err);
+      window.location.reload();
+      return;
+    }
+
+    setLoggingOut(false);
+    setLogoutConfirmOpen(false);
   };
 
   // 「🌱 デモで試してみる」：Workerにデモの庭を作ってもらい、返ってきた合言葉でそのままログインする
@@ -2873,26 +2904,26 @@ function App() {
 
         {/* ============ ログアウトの確認（画面の中央に重ねて表示） ============ */}
         {logoutConfirmOpen && (
-          <div className="modal-overlay" onClick={() => setLogoutConfirmOpen(false)}>
+          <div className="modal-overlay" onClick={() => { if (!loggingOut) setLogoutConfirmOpen(false); }}>
             <div className="modal-box" onClick={(e) => e.stopPropagation()}>
               <p className="modal-title">{me.isDemo ? "デモを終了しますか？" : "ログアウトしますか？"}</p>
               <p className="modal-text">
                 {me.isDemo
-                  ? "このデモの庭には戻れなくなります。もう一度「デモで試してみる」を押すと、新しい庭で体験できます。"
+                  ? "このデモの庭と記録は削除されます。もう一度「デモで試してみる」を押すと、新しい庭で体験できます。"
                   : "記録したデータは消えません。次に使う時は、もう一度ログインしてください。"}
               </p>
               <div className="modal-buttons">
-                <button className="modal-cancel-btn" onClick={() => setLogoutConfirmOpen(false)}>
+                <button
+                  className="modal-cancel-btn"
+                  onClick={() => setLogoutConfirmOpen(false)}
+                  disabled={loggingOut}
+                >
                   キャンセル
                 </button>
-                <button
-                  className="modal-ok-btn"
-                  onClick={() => {
-                    setLogoutConfirmOpen(false);
-                    signOut();
-                  }}
-                >
-                  {me.isDemo ? "終了する" : "ログアウト"}
+                <button className="modal-ok-btn" onClick={handleLogout} disabled={loggingOut}>
+                  {loggingOut
+                    ? (me.isDemo ? "終了しています…" : "ログアウト中…")
+                    : (me.isDemo ? "終了する" : "ログアウト")}
                 </button>
               </div>
             </div>
