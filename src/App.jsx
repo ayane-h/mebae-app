@@ -1,5 +1,5 @@
 import { SignedIn, SignedOut, SignIn, useAuth, useUser, useClerk, useSignIn } from "@clerk/clerk-react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import './App.css';
 import { Garden, PottedPlant, PlantIcon, SproutIcon, PlantingScene } from "./Garden.jsx";
 import { Onboarding } from "./Onboarding.jsx";
@@ -326,6 +326,55 @@ function App() {
   const [activeTab, setActiveTab] = useState("home"); // "home" | "companies" | "records" | "settings"
   // タブの上に重ねて表示する「画面」（null = 何も重ねていない）
   const [screen, setScreen] = useState(null); // null | "detail" | "plant-new" | "desired-conditions" | "confirm-delete" | "about" | "post-plant-prompt"
+
+  // ---- 画面を切り替えた時のスクロール位置 ----
+  // 企業詳細などの画面は、タブの画面と同じ入れ物（.page）の中で中身を入れ替えて表示している。
+  // そのままだと、一覧でスクロールした位置が引き継がれて、詳細ページが途中から開いてしまう。
+  // そこで、画面を切り替えた時に、スクロール位置を自分で決める。
+  const pageRef = useRef(null);          // スクロールする入れ物（.page）
+  const tabScrollRef = useRef(0);        // タブの画面（一覧など）を離れた時のスクロール位置
+  const prevScreenRef = useRef(screen);  // 直前に表示していた画面
+
+  // 今のスクロール位置を読む（PCのスマホ枠では .page が、スマホでは画面全体がスクロールするので、両方見る）
+  const getScrollTop = () => Math.max(window.scrollY, pageRef.current?.scrollTop || 0);
+
+  // スクロール位置を変える（どちらがスクロールしていても効くように、両方に指定する）
+  const setScrollTop = (y) => {
+    window.scrollTo(0, y);
+    if (pageRef.current) pageRef.current.scrollTop = y;
+  };
+
+  // useLayoutEffect：画面が描かれる「直前」に動く。
+  // useEffect だと、一瞬だけ途中までスクロールした画面が見えてしまうので、こちらを使う
+  useLayoutEffect(() => {
+    const prev = prevScreenRef.current;
+    prevScreenRef.current = screen;
+    if (prev === screen) return;
+
+    if (screen === null) {
+      // タブの画面に戻ってきた時は、離れる前の位置に戻す（一覧で見ていた場所から続けられるように）
+      setScrollTop(tabScrollRef.current);
+    } else {
+      // 詳細などの画面を開いた時は、いちばん上から見せる
+      setScrollTop(0);
+    }
+  }, [screen]);
+
+  // タブの画面（一覧など）をスクロールするたびに、その位置を覚えておく。
+  // 植える画面・設定の各画面など、どこから別の画面へ移っても、戻った時に元の位置に戻せるようにするため
+  useEffect(() => {
+    const onScroll = () => {
+      // 詳細などの画面を表示している間の位置は、覚えない
+      if (prevScreenRef.current === null) tabScrollRef.current = getScrollTop();
+    };
+    // 第3引数の true（キャプチャ）：scroll は親に伝わらない出来事だが、こうすると
+    // 画面全体のスクロールも、.page のスクロールも、まとめて document で受け取れる
+    // （.page はログインした後に表示されるので、ここで直接見張れないため）
+    document.addEventListener("scroll", onScroll, true);
+    // 片づけ：このコンポーネントが消える時に、見張りをやめる
+    return () => document.removeEventListener("scroll", onScroll, true);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [postPlantCompany, setPostPlantCompany] = useState(null); // 今植えたばかりの企業（{id, company_name, hasJobText, sprouted}）
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("mebae-dark-mode") === "1");
   const [desiredConditions, setDesiredConditions] = useState([]);
@@ -1511,7 +1560,7 @@ function App() {
       </SignedOut>
 
       <SignedIn>
-        <div className="page">
+        <div className="page" ref={pageRef}>
           {screen === "detail" && selectedCompany ? (
             // ============ 企業詳細画面（タブの上に重ねて表示） ============
             <div className="detail-screen">
